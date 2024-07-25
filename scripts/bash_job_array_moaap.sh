@@ -1,14 +1,15 @@
 #!/bin/bash
-#PBS -N job_array
+#PBS -N moaap_features
 #PBS -A P54048000
 ### Each array subjob will be assigned a single CPU with x GB of memory
 #PBS -l select=1:ncpus=1:mem=50GB
 #PBS -l walltime=12:00:00
 #PBS -q casper
 ### Request 10 subjobs with array indices spanning 2002-2003 (input year)
-#PBS -J 2018-2020
+#PBS -J 2015-2018
 #PBS -j oe
 #PBS -r y
+#PBS -o moaap_features.log
 
 export TMPDIR=/glade/scratch/$USER/temp
 mkdir -p $TMPDIR
