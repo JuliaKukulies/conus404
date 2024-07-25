@@ -208,9 +208,7 @@ def is_track_mcs_cluster(clusters: pd.DataFrame) -> pd.DataFrame:
     return mcs_tracks
 
 
-
-
-def regrid_data(era_var, conus): 
+def regrid_data(era_var,era_lats, era_lons, conus): 
     """
     Regrids the feature object mask on 0.25 x 0.25 degree grid to the 4km CONUS grid. 
 
@@ -223,7 +221,7 @@ def regrid_data(era_var, conus):
 
     """
     from scipy.interpolate import griddata
-    coords = np.array([ ds.lon.values.flatten(), ds.lat.values.flatten()]).T
+    coords = np.array([ era_lons.values.flatten(), era_lats.values.flatten()]).T
     regridded = griddata(coords, era_var , (conus.lons.values, conus.lats.values), method='nearest')
     
     return regridded
@@ -234,8 +232,7 @@ def get_feature_dataframe(feature_dict):
     Function to convert the dict information from the MOAAP atmospheric feature dataset to pandas dataframe structure that is the same for the convective tracking.
     
     """
-
-    feature_ids = np.array(list(ar_dict.keys()))
+    feature_ids = np.array(list(feature_dict.keys()))
     columns = ['feature', 'time', 'lon', 'lat', 'area'] 
     feature_df = pd.DataFrame( columns = columns) 
     # loop through each feature ID 
