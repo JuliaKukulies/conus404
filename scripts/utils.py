@@ -43,9 +43,9 @@ def get_statistics_conus(features, segments, ds, inplace=False):
     features["total_con"] = np.nan
     features["total_iwp"] = np.nan
     features["total_lwp"] = np.nan 
-    
-    features["min_tb"] = np.nan
 
+    features["min_tb"] = np.nan
+    
     #### get statistics for each detected feature ####
 
     # AREA 

@@ -29,7 +29,6 @@ monthly_files.sort()
 savedir = Path('/glade/work/kukulies/pe_conus404/tracking/')
 
 ### TRACKING PARAMETERS ###
-
 # 4km horizontal grid spacing, hourly data (in meter and seconds)
 dxy,dt= 4000, 3600 
 
@@ -106,12 +105,34 @@ for monthly_file in monthly_files:
     # A little check 
     print(mcs_flag[mcs_flag == True].shape[0], 'identified storms are MCSs', flush = True)
     assert np.unique(tracks.track.values).size == mcs_flag.shape[0]
+
+    # OUTPUT DATA FRAME
+    # remove redundant columns 
+    redundant = ['idx', 'num', 'timestr', 'time_cell']
+    tracks.drop(redundant, axis = 1, inplace= True)
+    # checks 
+    assert merges.track_child_cell_count.shape == mcs_flag_mergesplit.shape
+    assert merges.cell_parent_track_id.shape == merges.cell_child_feature_count.shape
+
+
+    # Add MCS flag (per track) 
+    df = mcs_flag_mergesplit.rename('mcs_flag').to_frame()
+    tracks = tracks.merge(df, on='track', how='left') 
+    # Add how many cells belong to each track (per track) 
+    tracks = tracks.merge(merges.track_child_cell_count.to_dataframe(), on='track', how='left')   
+
+    # Add ID of parent track (per cell) 
+    tracks = tracks.merge( merges.cell_parent_track_id.to_dataframe(), on='cell', how='left') 
+    # Add how many features belong to each cell (per cell) 
+    tracks = tracks.merge( merges.cell_child_feature_count.to_dataframe(), on='cell', how='left')
+    # Add whether the cell starts with a split (per cell) 
+    tracks["cell_starts_with_split"] = merges.cell_starts_with_split 
+    # Addinfo whether cell ends with a merge (per cell)
+    tracks["cell_ends_with_merge"] = merges.cell_ends_with_merge 
     
     # Save output data (mask and track files)
-    xr.DataArray.from_iris(mask).to_netcdf(str('tobac_storms_mask_' + year + '_' + month + '.nc'))
-
-    
-
+    xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc'))    
 
     
     

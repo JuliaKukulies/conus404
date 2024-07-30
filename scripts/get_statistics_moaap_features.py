@@ -59,8 +59,15 @@ for mon in np.arange(1,13):
         assert conus.surface_precip.shape[-1] == atmospheric_feature.shape[0]
         timedim = atmospheric_feature.shape[0]
 
-        # read in pickle files that contain the track meta data 
-        pickle_file = str( path / str(weather_type + 's_'+year+'01__dt-1h_MOAAP-masks.pkl'))
+        # read in pickle files that contain the track meta data
+        if weather_type == 'AR':
+            weather_str = weather_type + 's'
+        elif weather_type == 'CY_z500':
+            weather_str = 'CY-z500'
+        else:
+            weather_str = weather_type
+
+        pickle_file = str( path / str(weather_str + '_'+year+'01__dt-1h_MOAAP-masks.pkl'))
         with open(pickle_file, 'rb') as f:
             feature_dict = pickle.load(f)
 
@@ -94,3 +101,6 @@ for mon in np.arange(1,13):
         print(fname, ' saved.', flush = True )
         print(datetime.datetime.now(), flush = True) 
 
+    else:
+        print(fname, ' alreadu exists.', flush = True )
+        continue
