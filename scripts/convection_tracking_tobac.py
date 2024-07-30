@@ -126,9 +126,9 @@ for monthly_file in monthly_files:
     # Add how many features belong to each cell (per cell) 
     tracks = tracks.merge( merges.cell_child_feature_count.to_dataframe(), on='cell', how='left')
     # Add whether the cell starts with a split (per cell) 
-    tracks["cell_starts_with_split"] = merges.cell_starts_with_split 
+    tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
     # Addinfo whether cell ends with a merge (per cell)
-    tracks["cell_ends_with_merge"] = merges.cell_ends_with_merge 
+    tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
     
     # Save output data (mask and track files)
     xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
