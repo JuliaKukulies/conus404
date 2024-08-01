@@ -17,7 +17,10 @@ import utils
 import tobac
 print('using tobac version ', tobac.__version__, flush = True) 
 
-### DIRECTORIES ###
+#### input parameter ####
+year = str(sys.argv[1])
+
+#### DIRECTORIES ####
 
 # processed CONUS404 data with monthly files with hourly 2D variables needed for the calculation 
 data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/')
@@ -26,7 +29,7 @@ print(len(monthly_files), ' files detected for year ', year, flush = True)
 monthly_files.sort()
 
 # data path
-savedir = Path('/glade/work/kukulies/pe_conus404/tracking/')
+savedir = Path('/glade/work/kukulies/pe_conus404/tracked_storms/')
 
 ### TRACKING PARAMETERS ###
 # 4km horizontal grid spacing, hourly data (in meter and seconds)
@@ -37,7 +40,7 @@ parameters_features['position_threshold']='weighted_diff'
 parameters_features['sigma_threshold']= 0.5
 parameters_features['n_min_threshold']= 10 
 parameters_features['target']='minimum'
-parameters_features['threshold']=[240, 230, 225, 220, 210, 200]
+parameters_features['threshold']=[241, 230, 225, 220, 210, 200]
 parameters_features['statistic'] = {"feature_min_tb": np.nanmin, 'feature_max_iwp': np.nanmax, 'feature_mean_tb': np.nanmean}
 parameters_features['position_threshold'] = "center"
 
@@ -49,7 +52,7 @@ parameters_linking['adaptive_step']=0.95
 parameters_linking['method_linking']= 'predict'
 
 parameters_segmentation = {}
-parameters_segmentation['threshold']=241
+parameters_segmentation['threshold']=242
 parameters_segmentation['target'] = "minimum"
 parameters_segmentation['statistic'] = {"object_min_tb": np.nanmin, 'object_max_tb': np.nanmax, 'object_mean_tb': np.nanmean}
 
@@ -64,7 +67,7 @@ for monthly_file in monthly_files:
     coords = {'lon': (["south_north", "west_east"], ds.lons.values), 'lat': (["south_north", "west_east"], ds.lats.values)}
     ds = ds.assign_coords(coords)
     ds = ds.drop_vars(["lats", "lons"])
-    
+
     # convert tracking fields to iris cubes 
     tb_iris = ds.tb.to_iris()
     precip_iris = ds.surface_precip.to_iris()
@@ -85,7 +88,7 @@ for monthly_file in monthly_files:
     # use merging and splitting module and perform segmentation
     print(f"Calculating merges and splits", flush = True )
     merges = tobac.merge_split.merge_split_MEST(tracks, dxy, **parameters_merge)
-    # add track identifier to feature dataframe 
+    # add track identifiers to feature dataframe 
     tracks["track"] = merges.feature_parent_track_id.data.astype(np.int64)
     track_start_time = tracks.groupby("track").time.min()
     tracks["time_track"] = tracks.time - track_start_time[tracks.track].to_numpy()
@@ -99,10 +102,10 @@ for monthly_file in monthly_files:
     tracks = utils.get_statistics_conus(tracks, mask, ds, inplace = True)
     
     # MCS classification
-    tracks, clusters = process_clusters(tracks)
-    mcs_flag = is_track_mcs_cluster(clusters)
+    tracks, clusters = utils.process_clusters(tracks)
+    mcs_flag = utils.is_track_mcs_cluster(clusters)
 
-    # A little check 
+    # A little check for the MCS flag result 
     print(mcs_flag[mcs_flag == True].shape[0], 'identified storms are MCSs', flush = True)
     assert np.unique(tracks.track.values).size == mcs_flag.shape[0]
 
@@ -113,7 +116,6 @@ for monthly_file in monthly_files:
     # checks 
     assert merges.track_child_cell_count.shape == mcs_flag_mergesplit.shape
     assert merges.cell_parent_track_id.shape == merges.cell_child_feature_count.shape
-
 
     # Add MCS flag (per track) 
     df = mcs_flag_mergesplit.rename('mcs_flag').to_frame()
@@ -126,14 +128,14 @@ for monthly_file in monthly_files:
     # Add how many features belong to each cell (per cell) 
     tracks = tracks.merge( merges.cell_child_feature_count.to_dataframe(), on='cell', how='left')
     # Add whether the cell starts with a split (per cell) 
-    tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
+    #tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
     # Addinfo whether cell ends with a merge (per cell)
-    tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
+    #tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
     
     # Save output data (mask and track files)
     xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
     tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc'))    
-
+    print('files saved', flush = True)
     
     
 

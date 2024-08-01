@@ -1,5 +1,5 @@
 """
-1;95;0cSome utilities and methods for the project: Precipitation efficiency of convective storms and other atmospheric features in CONUS404 and observations.
+Some utilities and methods for the project: Precipitation efficiency of convective storms and other atmospheric features in CONUS404 and observations.
 
 Contact: kukulies@ucar.edu
 
