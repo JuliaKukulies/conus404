@@ -9,7 +9,7 @@
 #PBS -J 2000-2022
 #PBS -j oe
 #PBS -r y
-#PBS -o conus_processing.log
+#PBS -o log_files/conus_processing.log
 
 export TMPDIR=/glade/derecho/scratch/$USER/temp
 mkdir -p $TMPDIR

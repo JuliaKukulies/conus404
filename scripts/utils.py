@@ -10,6 +10,8 @@ from pathlib import Path
 import xarray as xr 
 import pandas as pd 
 import tobac
+from tobac.utils.periodic_boundaries import weighted_circmean
+
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """

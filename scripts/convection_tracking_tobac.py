@@ -61,7 +61,8 @@ parameters_merge = dict(
 ################################ processing monthly files #######################################
 
 for monthly_file in monthly_files:
-    month =  str(monthly_file)[-2:-4]
+    month =  str(monthly_file)[-4:-2]
+    print(monthly_file, month, flush = True)
     ds = xr.open_dataset(monthly_file)
     # make longitudes and latitudes coordinates (instead of variables) 
     coords = {'lon': (["south_north", "west_east"], ds.lons.values), 'lat': (["south_north", "west_east"], ds.lats.values)}
@@ -114,11 +115,11 @@ for monthly_file in monthly_files:
     redundant = ['idx', 'num', 'timestr', 'time_cell']
     tracks.drop(redundant, axis = 1, inplace= True)
     # checks 
-    assert merges.track_child_cell_count.shape == mcs_flag_mergesplit.shape
+    assert merges.track_child_cell_count.shape == mcs_flag.shape
     assert merges.cell_parent_track_id.shape == merges.cell_child_feature_count.shape
 
     # Add MCS flag (per track) 
-    df = mcs_flag_mergesplit.rename('mcs_flag').to_frame()
+    df = mcs_flag.rename('mcs_flag').to_frame()
     tracks = tracks.merge(df, on='track', how='left') 
     # Add how many cells belong to each track (per track) 
     tracks = tracks.merge(merges.track_child_cell_count.to_dataframe(), on='track', how='left')   
