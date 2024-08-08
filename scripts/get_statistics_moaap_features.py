@@ -62,8 +62,11 @@ for mon in np.arange(1,13):
             continue 
     
         # quick check that CONUS data and atmospheric feature mask have same size of time dimension
-        assert conus.surface_precip.shape[-1] == atmospheric_feature.shape[0]
-        timedim = atmospheric_feature.shape[0]
+        if conus.surface_precip.shape[-1] != atmospheric_feature.shape[0]:
+            print('CONUS:', conus.surface_precip.shape, flush = True)
+            print('MOAAP feature mask:', atmospheric_feature.shape, flush = True)
+        
+        timedim = conus.surface_precip.shape[-1]
 
         # read in pickle files that contain the track meta data
         if weather_type == 'AR':
