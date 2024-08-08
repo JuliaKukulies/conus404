@@ -12,6 +12,25 @@ import pandas as pd
 import tobac
 from tobac.utils.periodic_boundaries import weighted_circmean
 
+def get_tb(olr):
+    """                                                                                                       
+    This function converts outgoing longwave radiation to brightness temperatures.                             
+    using the Planck constant.                                                                                 
+                                                                                                              
+    Args:                                                                                                       
+        olr(xr.DataArray or numpy array): 2D field of model output with OLR                                      
+    Returns:                                                                                                    
+        tb(xr.DataArray or numpy array): 2D field with estimated brightness temperatures                        
+    """
+    # constants                                                                                                
+    aa = 1.228
+    bb = -1.106 * 10**(-3) # K−1                                                                              
+    # Planck constant                                                                                          
+    sig = 5.670374419 * 10**(-8) # W⋅m−2⋅K−4                                                                    
+    # flux equivalent brightness temperature                                                                   
+    Tf = (abs(olr)/sig) ** (1./4)
+    tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
+    return tb 
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """
