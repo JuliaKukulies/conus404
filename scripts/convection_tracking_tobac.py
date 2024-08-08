@@ -62,9 +62,10 @@ parameters_merge = dict(
 ################################ processing monthly files ######################################
 
 for monthly_file in monthly_files:
-    if monthly_file.is_file():
-        month =  str(monthly_file)[-5:-3]
-        print(monthly_file, month, flush = True)
+    output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
+    month =  str(monthly_file)[-5:-3]
+    print(monthly_file, month, flush = True)
+    if output_file.is_file() is False:
         ds = xr.open_dataset(monthly_file)
         # make longitudes and latitudes coordinates (instead of variables) 
         coords = {'lon': (["south_north", "west_east"], ds.lons.values), 'lat': (["south_north", "west_east"], ds.lats.values)}
