@@ -32,6 +32,79 @@ def get_tb(olr):
     tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
     return tb 
 
+
+def regrid_merggrid(ds_tb, latname, lonname):
+    '''
+    regrids the MERG grid (CPC-IR or CCIC) from a regularly spaced
+    to the irregularly spaced grid of Stage IV 
+
+    '''
+    from scipy.interpolate import griddata
+
+    target_lons, target_lats = stageIV_lon, stageIV_lat
+    values = ds_tb.data.flatten()
+
+    lons, lats = np.meshgrid(ds_tb[lonname].values, ds_tb[latname].values) 
+    points = np.array([ lons.flatten(), lats.flatten()]).T
+    regridded = griddata(points, values, (target_lons, target_lats), method = 'nearest')
+    return regridded
+
+
+def filter_data_for_valid_stageIV(data, ds_prec):
+    '''
+    Sets regridded Tb or CCIC data to NaN where there is no Stage IV data
+    
+    '''
+    mask= ma.masked_invalid(ds_prec.Precipitation[0].data)
+    data[mask.mask == True] = np.nan
+    return data 
+
+
+def subset_data_to_conus(dataset: xr.Dataset, latname, lonname) -> xr.Dataset:
+    """
+            Subset CPCIR data to CONUS.
+
+            Args:
+                dataset: An xarray.Dataset to subset.
+
+            Return:
+                The dataset restricted to CONUS.
+    """
+
+    from pyresample import create_area_def
+    
+    MERGIR_GRID = create_area_def(
+        "cpcir_area",
+        {"proj": "longlat", "datum": "WGS84"},
+        area_extent=[-180.0, -60.0, 180.0, 60.0],
+        resolution=(0.03637833468067906, 0.036385688295936934),
+        units="degrees",
+        description="MERG IR grid",)
+    
+    # lat min/max, lon min/max for CONUS404
+    #17.647308 57.34342 -138.73135 -57.068634
+
+    # using the corner points of the Stage IV dataset 
+    conus_lon_min = -134.02492
+    conus_lon_max = -59.963787
+    conus_lat_min = 19.80349
+    conus_lat_max = 57.837646
+
+    lons_cpcir, lats_cpcir = MERGIR_GRID.get_lonlats()
+        
+    lons_cpcir = lons_cpcir[0]
+    lats_cpcir = lats_cpcir[:, 0]
+
+    col_start = np.where(lons_cpcir > conus_lon_min)[0][0]
+    col_end = np.where(lons_cpcir < conus_lon_max)[0][-1]
+    row_start = np.where(lats_cpcir < conus_lat_max)[0][0]
+    row_end = np.where(lats_cpcir > conus_lat_min)[0][-1] 
+    
+    return dataset[{latname: slice(row_start, row_end), lonname: slice(col_start, col_end)}]
+
+
+
+
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """
     Calculate the area, precipitation, condensation and other statistics for each feature

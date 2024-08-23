@@ -174,7 +174,7 @@ else:
     print(datetime.datetime.now(), flush = True)
     coords = dict(south_north=south_north, west_east=west_east, time = time)
     data = xr.Dataset(data_vars=data_vars, coords=coords)
-    data.to_netcdf( out / ( 'conus404_' + str(year) + str(month).zfill(2) +  '.nc') )  
+    data.to_netcdf( out / ( 'conus404_' + str(wyyear) + str(month).zfill(2) +  '.nc') )  
 
     # close datasets and delete variables     
     del tiwp, tlwp
