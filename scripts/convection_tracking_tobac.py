@@ -24,7 +24,7 @@ year = str(sys.argv[1])
 #### DIRECTORIES ####
 
 # processed CONUS404 data with monthly files with hourly 2D variables needed for the calculation 
-data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/')
+data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/processed/')
 monthly_files = list(data2d.glob( str('conus404_' + year + '*.nc')))  
 print(len(monthly_files), ' files detected for year ', year, flush = True)
 monthly_files.sort()
@@ -62,8 +62,8 @@ parameters_merge = dict(
 ################################ processing monthly files ######################################
 
 for monthly_file in monthly_files:
-    output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
     month =  str(monthly_file)[-5:-3]
+    output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
     print(monthly_file, month, flush = True)
     if output_file.is_file() is False:
         ds = xr.open_dataset(monthly_file)

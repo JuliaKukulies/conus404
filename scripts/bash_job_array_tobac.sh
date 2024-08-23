@@ -6,7 +6,7 @@
 #PBS -l walltime=24:00:00
 #PBS -q casper
 ### Request 10 subjobs with array indices spanning 2002-2003 (input year)
-#PBS -J 2000-2022
+#PBS -J 2003-2005
 #PBS -j oe
 #PBS -r y
 #PBS -o log_files/tobac_tracking.log

@@ -1,6 +1,6 @@
 """
-This script regrids the mask files various atmospheric features identified with the MOAAP algorithm to the CONUS404 grid. For each atmospheric feature (i.e. atmospheric rivers, tropical and extratropical cyclones), some bulk statistics are calculated based on the CONUS404 fields precipitation, condensation, as well as liquid and ice water path.
 
+This script regrids the mask files various atmospheric features identified with the MOAAP algorithm to the CONUS404 grid. For each atmospheric feature (i.e. atmospheric rivers, tropical and extratropical cyclones), some bulk statistics are calculated based on the CONUS404 fields precipitation, condensation, as well as liquid and ice water path.
 
 -------------------------------------------------------------------------------------------
 Contact: kukulies@ucar.edu
@@ -52,7 +52,7 @@ for mon in np.arange(1,13):
         era_lons = ds.lon
 
         # read in corresponding month with conus data with relevant 2d variables
-        data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/')
+        data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/processed/')
         monthly_file = data2d / str('conus404_'+ year + month +'.nc' ) 
 
         try: 
@@ -63,8 +63,9 @@ for mon in np.arange(1,13):
     
         # quick check that CONUS data and atmospheric feature mask have same size of time dimension
         if conus.surface_precip.shape[-1] != atmospheric_feature.shape[0]:
-            print('CONUS:', conus.surface_precip.shape, flush = True)
+            print(year, month, 'CONUS:', conus.surface_precip.shape, flush = True)
             print('MOAAP feature mask:', atmospheric_feature.shape, flush = True)
+            continue
         
         timedim = conus.surface_precip.shape[-1]
 
@@ -88,7 +89,10 @@ for mon in np.arange(1,13):
         # perform regridding for each timestep
         print(datetime.datetime.now(), flush = True)
         print('regridding the data for ', year, month , flush = True)
-        for idx, tt in enumerate(conus.time.values): 
+
+
+        for idx, tt in enumerate(conus.time.values):
+            #print(tt, flush = True)
             era_var = atmospheric_feature.data[idx].flatten()
             atmospheric_feature_4km_t = utils.regrid_data(era_var,era_lats, era_lons, conus)
             atmospheric_feature_4km[:,:,idx] =  atmospheric_feature_4km_t
