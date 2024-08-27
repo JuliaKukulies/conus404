@@ -32,6 +32,23 @@ def get_tb(olr):
     tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
     return tb 
 
+def regrid_data(era_var, conus): 
+    """
+    Regrids the feature object mask on 0.25 x 0.25 degree grid to the 4km CONUS grid. 
+
+    era_var: ERA5 variable at a specific time point. 
+
+    conus: Postprocessed CONUS404 data with 2D lon-lat coordinates.
+
+    Returns: 
+        The regridded object mask 
+
+    """
+    from scipy.interpolate import griddata
+    coords = np.array([ ds.lon.values.flatten(), ds.lat.values.flatten()]).T
+    regridded = griddata(coords, era_var , (conus.lons.values, conus.lats.values), method='nearest')    
+    return regridded
+
 
 def regrid_merggrid(ds_tb, latname, lonname):
     '''
@@ -40,6 +57,10 @@ def regrid_merggrid(ds_tb, latname, lonname):
 
     '''
     from scipy.interpolate import griddata
+    stage_iv_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc') 
+    ds_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
+    stageIV_lon = ds_coords.lon
+    stageIV_lat = ds_coords.lat
 
     target_lons, target_lats = stageIV_lon, stageIV_lat
     values = ds_tb.data.flatten()
@@ -103,7 +124,32 @@ def subset_data_to_conus(dataset: xr.Dataset, latname, lonname) -> xr.Dataset:
     return dataset[{latname: slice(row_start, row_end), lonname: slice(col_start, col_end)}]
 
 
+def get_iwp_tendency(tiwp, timedim = 'time', seconds = 3600):
+    '''
+    Calculate the positive IWP tendency from CCIC over CONUS.
 
+        Args:
+        -----
+          tiwp: xr.DataArray with IWP (in kg/m2) regridded to match features and cropped over CONUS
+          timedim: name of time dimension
+          seconds: seconds in timestep (default = 3600, if hourly data is used)
+        
+        Returns: 
+        --------
+           tiwp_ten: positive IWP tendency (dIWP[>0]/dt)
+    '''
+
+    tiwp_diff = tiwp.diff(dim = timedim) / seconds # to get the units to kg/m2/s
+    tiwp_ten = tiwp_diff.where(tiwp_diff > 0 )
+
+    return tiwp_ten
+
+
+def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
+    """
+    Calculate the area, maximum precip rate and total precip volume for each feature
+    """
+                                                                                                                                        
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """
@@ -302,23 +348,24 @@ def is_track_mcs_cluster(clusters: pd.DataFrame) -> pd.DataFrame:
     return mcs_tracks
 
 
-def regrid_data(era_var,era_lats, era_lons, conus): 
+def regrid_era_to_stageIV(era_var, target): 
     """
     Regrids the feature object mask on 0.25 x 0.25 degree grid to the 4km CONUS grid. 
 
     era_var: ERA5 variable at a specific time point. 
 
-    conus: Postprocessed CONUS404 data with 2D lon-lat coordinates.
+    target: Stage IV data with lats and lons 
 
     Returns: 
         The regridded object mask 
 
     """
-    from scipy.interpolate import griddata
-    coords = np.array([ era_lons.values.flatten(), era_lats.values.flatten()]).T
-    regridded = griddata(coords, era_var , (conus.lons.values, conus.lats.values), method='nearest')
+    from scipy.interpolate import griddata    
+    coords = np.array([ ds.lon.values.flatten(), ds.lat.values.flatten()]).T   
+    regridded = griddata(coords, era_var , (target.lon.values, target.lat.values), method='nearest')
     
     return regridded
+
 
 def get_feature_dataframe(feature_dict): 
 
