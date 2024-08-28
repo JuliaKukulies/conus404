@@ -1,5 +1,5 @@
 """
-This script is used to track convective storms based on IR brightness temperatures and surface precipitation in the CONUS404 dataset using the tracking library tobac. Mesoscale convective systems are a subset of the resulting storm database. These are identified using extra criteria for a large cloud shield <= 241 K and the occurrence of a cold core and heavy surface precipitation. 
+This script is used to track convective storms based on IR brightness temperatures from geostationary satellites and surface precipitation from the StageIV dataset using the tracking library tobac. Mesoscale convective systems are a subset of the resulting storm database. These are identified using extra criteria for a large cloud shield <= 241 K and the occurrence of a cold core and heavy surface precipitation. 
 
 The script also calculates bulk statistics (incl. total precipitation, condensation and ice water path) for each detected storm feature. These statistics can be used to estimate storm-scale precipitation efficiencies. 
 
@@ -23,14 +23,14 @@ year = str(sys.argv[1])
 
 #### DIRECTORIES ####
 
-# processed CONUS404 data with monthly files with hourly 2D variables needed for the calculation 
-data2d = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/processed/')
-monthly_files = list(data2d.glob( str('conus404_' + year + '*.nc')))  
-print(len(monthly_files), ' files detected for year ', year, flush = True)
-monthly_files.sort()
+# StageIV data
+stageIV= Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/data/')
 
-# data path
-savedir = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/tracked_storms/')
+# MERGIR data
+mergir = Path('/glade/campaign/mmm/c3we/prein/observations/GPM_MERGIR/data')
+
+# output data path 
+savedir = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/tracked_storms_obs/')
 
 ### TRACKING PARAMETERS ###
 # 4km horizontal grid spacing, hourly data (in meter and seconds)
@@ -59,8 +59,93 @@ parameters_segmentation['statistic'] = {"object_min_tb": np.nanmin, 'object_max_
 
 parameters_merge = dict(
     distance=dxy*20,)
+
+# get coordinates for Stage IV dataset 
+stage_iv_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc') 
+ds_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
+
 ################################ processing monthly files ######################################
 
+# get monthly file for Stage IV
+monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc') 
+ds_prec = xr.open_dataset(monthly_file_prec)
+precip = ds_prec.Precipitation
+# have time dimension as last dimension 
+precip = precip.transpose("rlat", "rlon", "time")
+precip['lat'] = ds_coords.lat
+precip['lon'] = ds_coords.lon
+
+# get monthly file for Tb (crop, regrid, and set nan)
+monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
+ds = xr.open_mfdataset(monthly_file_ir)
+# latitudes are flipped in IR data 
+tbb  = np.flip(ds.Tb, axis =1 )
+tbb['lat'] = -np.flip(tbb.lat, axis = 0)
+tbb = tbb.resample(time = 'H').mean()
+
+# crop Tb data 
+tb_cropped = subset_data_to_conus(tbb, 'lat', 'lon')
+
+# regrid merg DATA 
+for tt in tqdm(tb_cropped.time):
+    regridded = regrid_merggrid(tb_cropped.sel(time =tt), 'lat', 'lon')
+    if tt == tb_cropped.time[0]:
+        regridded_tb = regridded
+        continue
+    else:
+        regridded_tb = np.dstack([regridded_tb, regridded])
+
+# set NaN where there is no precip data 
+tb_nan = filter_data_for_valid_stageIV(regridded_tb, precip)
+tb = precip.copy()
+tb = tb.rename('Tb')
+tb.data = tb_nan
+
+# fix meta data so data array can be converted to iris cube
+attributes= {'units':'K', 'long_name':'brightness_temperature'}
+tb = tb.assign_attrs(attributes, inplace = True)
+
+# convert tracking fields to iris 
+tb_iris = tb.to_iris()
+
+
+# get monthly file for CCIC (crop, regrid, and set nan)
+import ccic
+import s3fs
+
+# Create a filesystem for S3
+s3 = s3fs.S3FileSystem(anon=True)
+# Lazy load a CCIC file
+aws_path = Path('chalmerscloudiceclimatology/record/cpcir/')
+fname = aws_path / year / 'ccic_cpcir_201801030000.zarr'
+fnames = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ year +month +'*zarr') 
+fnames.sort()
+
+# read in all monthly files
+for fname in fnames:
+    # read in one file 
+    ds_ccic = xr.open_zarr(s3.get_mapper(fname))
+    # Load `tiwp` into memory
+    tiwp = ds_ccic.tiwp.load().mean('time') #  hourly average 
+    
+    # crop region 
+    tiwp_cropped = subset_data_to_conus(tiwp, 'latitude', 'longitude')
+
+    # regrid
+    regridded_tiwp = regrid_merggrid(tiwp_cropped, 'latitude', 'longitude')
+    if fname == fnames[0]:
+        tiwp_ds = regridded_tiwp
+        continue
+    else: 
+        # concatenate on time dim 
+        tiwp_ds  = np.dstack([ tiwp_ds, regridded_tiwp])
+        del ds_ccic, tiwp
+
+tiwp = precip.copy()
+tiwp = tiwp.rename('TIWP')
+tiwp.data = tiwp_ds
+
+        
 for monthly_file in monthly_files:
     month =  str(monthly_file)[-5:-3]
     output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
