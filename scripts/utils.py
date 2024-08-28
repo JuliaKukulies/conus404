@@ -32,7 +32,7 @@ def get_tb(olr):
     tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
     return tb 
 
-def regrid_data(era_var, conus): 
+def regrid_data(era_var, era_lons, era_lats, conus): 
     """
     Regrids the feature object mask on 0.25 x 0.25 degree grid to the 4km CONUS grid. 
 
@@ -45,7 +45,7 @@ def regrid_data(era_var, conus):
 
     """
     from scipy.interpolate import griddata
-    coords = np.array([ ds.lon.values.flatten(), ds.lat.values.flatten()]).T
+    coords = np.array([ era_lons.values.flatten(), era_lats.values.flatten()]).T
     regridded = griddata(coords, era_var , (conus.lons.values, conus.lats.values), method='nearest')    
     return regridded
 
@@ -147,9 +147,63 @@ def get_iwp_tendency(tiwp, timedim = 'time', seconds = 3600):
 
 def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     """
+    
     Calculate the area, maximum precip rate and total precip volume for each feature
+
     """
-                                                                                                                                        
+    if not inplace:
+        features = features.copy()
+
+    # get matrix area (16 km2)
+    area = precip.copy()
+    areas = np.full(area.shape, 4*4)
+    area.data = areas
+
+    # initiate variables 
+    features["area"] = np.nan
+    
+    features["max_precip"] = np.nan
+    features["max_iwpten"] = np.nan
+    features["max_iwp"] = np.nan
+    
+    features["total_precip"] = np.nan
+    features["total_iwpten"] = np.nan
+    features["total_iwp"] = np.nan
+
+
+    # get positive IWP tendency from CCIC dataset 
+    tiwp_ten = get_iwp_tendency(tiwp)
+    
+    #### get statistics for each detected feature ####
+
+    # AREA 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    features, segments, area, statistic=dict(area=np.nansum), default=np.nan
+    )
+    # MAX PRECIP 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, precip, statistic=dict(max_precip=np.nanmax), default=np.nan
+    )
+
+    # POSITIVE ICE WATER PATH TENDENCY 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,1:], tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
+    
+    # MAX IWP
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(max_iwp=np.nanmax), default=np.nan)
+
+    # TOTAL PRECIP
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, precip, statistic=dict(total_precip=np.nansum), default=np.nan
+    )
+    # POSTITIVE ICE WATER PATH TENDENCY 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,1:], tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
+    
+    
+    # TOTAL IWP 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(total_iwp=np.nansum), default=np.nan)
+
+    return features 
+    
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """

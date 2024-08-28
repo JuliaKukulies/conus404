@@ -35,7 +35,7 @@ year = str(sys.argv[2])
 weather_type = str(sys.argv[1])
 
 ############# read in the data ####################################
-savedir = Path( str( '/glade/work/kukulies/pe_conus404/moaap_features/') + str(weather_type) )  
+savedir = Path( str( '/glade/work/kukulies/pe_conus404/moaap_features/conus404/') + str(weather_type) )  
 
 for mon in np.arange(1,13):
     month = str(mon).zfill(2)
