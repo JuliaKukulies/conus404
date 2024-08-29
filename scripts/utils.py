@@ -411,11 +411,11 @@ def regrid_era_to_stageIV(era_var, target):
     target: Stage IV data with lats and lons 
 
     Returns: 
-        The regridded object mask 
-
+        The regridded object mask
+    
     """
     from scipy.interpolate import griddata    
-    coords = np.array([ ds.lon.values.flatten(), ds.lat.values.flatten()]).T   
+    coords = np.array([ era_lons.values.flatten(), era_lats.values.flatten()]).T   
     regridded = griddata(coords, era_var , (target.lon.values, target.lat.values), method='nearest')
     
     return regridded
