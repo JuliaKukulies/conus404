@@ -170,7 +170,6 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     features["total_iwpten"] = np.nan
     features["total_iwp"] = np.nan
 
-
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(tiwp)
     

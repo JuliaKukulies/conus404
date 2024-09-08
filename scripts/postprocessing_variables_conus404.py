@@ -77,7 +77,6 @@ year = year_in
 month = mon_in
 print('input received:', str(year), str(month), flush = True)
 
-
 # check first if month has already been processed 
 out_file = out / ( 'conus404_' + str(year) + str(month).zfill(2) +  '.nc')
 if out_file.is_file():
@@ -99,6 +98,7 @@ else:
     # open file and extract necessary variables 
     print('processing variables for', str(year) +' '+ str(month), ' over ',len(hourly_files_2d), 'files', flush = True)
     print(datetime.datetime.now(), flush = True)
+
     for file_idx, fname in enumerate(hourly_files_2d):
         ds2d = xr.open_dataset(fname).squeeze()
         ds3d = xr.open_dataset(hourly_files_3d[file_idx]).squeeze()
