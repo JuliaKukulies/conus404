@@ -10,6 +10,7 @@
 #PBS -j oe
 #PBS -r y
 #PBS -o log_files/tobac_tracking.log
+#PBS -m n
 
 export TMPDIR=/glade/derecho/scratch/$USER/temp
 mkdir -p $TMPDIR

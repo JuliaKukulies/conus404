@@ -223,7 +223,12 @@ def get_statistics_conus(features, segments, ds, inplace=False):
         
     # get matrix with area for every grid cell (16 km2)
     area = ds.surface_precip.copy()
-    area.data[:] = 4*4
+
+    # get matrix area (16 km2)
+    area = ds.surface_precip.copy()
+    areas = np.full(area.shape, 4*4)
+    area.data = areas
+    #area.data[:] = 4*4
 
     # initiate variables 
     features["area"] = np.nan
@@ -320,7 +325,7 @@ def max_consecutive_true(condition: np.ndarray[bool]) -> int:
     else:
         return 0
 
-def is_track_mcs(clusters: pd.DataFrame) -> pd.DataFrame:
+def is_track_mcs_cell(clusters: pd.DataFrame) -> pd.DataFrame:
     """Test whether each track in features meets the condtions for an MCS
 
     Parameters
@@ -333,11 +338,11 @@ def is_track_mcs(clusters: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         _description_
     """
-    consecutive_precip_max = clusters.groupby(["cell"]).max_precip.apply(lambda x:max_consecutive_true(x>=10))#, include_groups=False)
+    consecutive_precip_max = clusters.groupby(["cell"]).cell_max_precip.apply(lambda x:max_consecutive_true(x>=10))#, include_groups=False)
     
-    consecutive_area_max = clusters.groupby(["cell"]).area.apply(lambda x:max_consecutive_true(x>=4e4))#, include_groups=False)
+    consecutive_area_max = clusters.groupby(["cell"]).cell_area.apply(lambda x:max_consecutive_true(x>=4e4))#, include_groups=False)
     
-    max_total_precip = clusters.groupby(["cell"]).total_precip.max()
+    max_total_precip = clusters.groupby(["cell"]).cell_total_precip.max()
     
     is_mcs = np.logical_and.reduce(
         [
@@ -347,7 +352,7 @@ def is_track_mcs(clusters: pd.DataFrame) -> pd.DataFrame:
         ]
     )
     mcs_tracks =  pd.Series(data=is_mcs, index=consecutive_precip_max.index)
-    mcs_tracks.index.name="track"
+    mcs_tracks.index.name="cell"
     return mcs_tracks
 
 ### only if merging and splitting is used ###
@@ -369,6 +374,22 @@ def process_clusters(tracks):
     clusters["cluster_total_precip"] = gb_clusters.total_precip.sum().to_numpy()
     clusters["cluster_total_precip_volume"] = gb_clusters.total_precip.sum().to_numpy() * gb_clusters.area.sum().to_numpy()
     return tracks, clusters
+
+
+def process_cells(tracks):
+    clusters = tracks.groupby("cell")
+     
+    clusters["cell_time"] = gb_clusters.time.first().to_numpy()
+    
+    clusters["cell_longitude"] = gb_clusters.apply(lambda x:weighted_circmean(x.lon.to_numpy(), x.area.to_numpy(), low=0, high=360))#, include_groups=False)
+    clusters["cell_latitude"] = gb_clusters.apply(lambda x:np.average(x.lat.to_numpy(), weights=x.area.to_numpy()))#, include_groups=False)
+    
+    clusters["cell_area"] = gb_clusters.area.sum().to_numpy()
+    clusters["cell_max_precip"] = gb_clusters.max_precip.max().to_numpy()
+    clusters["cell_total_precip"] = gb_clusters.total_precip.sum().to_numpy()
+    clusters["cell_total_precip_volume"] = gb_clusters.total_precip.sum().to_numpy() * gb_clusters.area.sum().to_numpy()
+    return tracks, clusters
+
 
 
 def is_track_mcs_cluster(clusters: pd.DataFrame) -> pd.DataFrame:
@@ -402,7 +423,7 @@ def is_track_mcs_cluster(clusters: pd.DataFrame) -> pd.DataFrame:
     return mcs_tracks
 
 
-def regrid_era_to_stageIV(era_var, target): 
+def regrid_era_to_stageIV(era_var,era_lons, era_lats, target): 
     """
     Regrids the feature object mask on 0.25 x 0.25 degree grid to the 4km CONUS grid. 
 
