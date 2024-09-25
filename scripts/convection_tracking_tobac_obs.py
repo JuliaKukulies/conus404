@@ -8,6 +8,7 @@ Contact: kukulies@ucar.edu
 """
 
 import sys
+from datetime import datetime
 import numpy as np 
 from pathlib import Path 
 import xarray as xr 
@@ -85,11 +86,12 @@ tbb['lat'] = -np.flip(tbb.lat, axis = 0)
 tbb = tbb.resample(time = 'H').mean()
 
 # crop Tb data 
-tb_cropped = subset_data_to_conus(tbb, 'lat', 'lon')
+tb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
 
+print('processing Tb data...', str(datetime.now()) , flush = True )
 # regrid merg DATA 
-for tt in tqdm(tb_cropped.time):
-    regridded = regrid_merggrid(tb_cropped.sel(time =tt), 'lat', 'lon')
+for tt in tb_cropped.time:
+    regridded = utils.regrid_merggrid(tb_cropped.sel(time =tt), 'lat', 'lon')
     if tt == tb_cropped.time[0]:
         regridded_tb = regridded
         continue
@@ -97,7 +99,7 @@ for tt in tqdm(tb_cropped.time):
         regridded_tb = np.dstack([regridded_tb, regridded])
 
 # set NaN where there is no precip data 
-tb_nan = filter_data_for_valid_stageIV(regridded_tb, precip)
+tb_nan = utils.filter_data_for_valid_stageIV(regridded_tb, precip)
 tb = precip.copy()
 tb = tb.rename('Tb')
 tb.data = tb_nan
@@ -123,17 +125,20 @@ fnames = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ year +month +'*zarr')
 fnames.sort()
 
 # read in all monthly files
+print('access and processes CCIC data from AWS cloud...', flush = True)
 for fname in fnames:
     # read in one file 
     ds_ccic = xr.open_zarr(s3.get_mapper(fname))
-    # Load `tiwp` into memory
-    tiwp = ds_ccic.tiwp.load().mean('time') #  hourly average 
+    tiwp = ds_ccic.tiwp
     
-    # crop region 
-    tiwp_cropped = subset_data_to_conus(tiwp, 'latitude', 'longitude')
+    # crop region
+    tiwp_cropped = utils.subset_data_to_conus(tiwp, 'latitude', 'longitude')
 
+    # Load `tiwp` into memory and take hourly average 
+    tiwp_data = tiwp_cropped.load().mean('time') 
+    
     # regrid
-    regridded_tiwp = regrid_merggrid(tiwp_cropped, 'latitude', 'longitude')
+    regridded_tiwp = utils.regrid_merggrid(tiwp_data, 'latitude', 'longitude')
     if fname == fnames[0]:
         tiwp_ds = regridded_tiwp
         continue
@@ -150,9 +155,11 @@ tiwp.data = tiwp_ds
 # tiwp
 # tb_iris
 # precip 
+assert precip.shape == tb_iris.data.shape
+assert tiwp.shape == precip.shape
 
 monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
-print('start tracking for ', year, month, flush = True)
+print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
     # feature detection based on Tb
@@ -182,7 +189,21 @@ if monthly_file.is_file() is False:
 
     # Bulk statistics for identified cloud objects
     print('Calculating the statistics...', flush = True)
-    tracks = utils.get_statistics_obs(tracks, mask, precip, tiwp, inplace = True)
+    # make sure track and mask are both in datetime format
+    #times = np.array([x.to_datetime64() for x in tracks.time])
+    times = np.array([np.datetime64(f'{cftime_obj.year}-{cftime_obj.month:02d}-{cftime_obj.day:02d} '
+                                    f'{cftime_obj.hour:02d}:{cftime_obj.minute:02d}')
+                      for cftime_obj in tracks.time])
+    tracks['time'] = times
+    mask_xr = xr.DataArray.from_iris(mask)
+    mask_xr.time = precip.time.values
+    
+    # check if time coordinates match
+    assert (mask.time.values == tiwp.time.values).all()
+    assert (precip.time.values == tiwp.time.values).all()
+    print(track.time.values[0:10] , mask_xr.time.values[0:10], track_xr.time.dtype, mask_xr.time.dtype)
+
+    tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
 
     # MCS classification
     tracks, clusters = utils.process_clusters(tracks)
@@ -209,15 +230,16 @@ if monthly_file.is_file() is False:
     tracks = tracks.merge( merges.cell_parent_track_id.to_dataframe(), on='cell', how='left') 
     # Add how many features belong to each cell (per cell) 
     tracks = tracks.merge( merges.cell_child_feature_count.to_dataframe(), on='cell', how='left')
+
     # Add whether the cell starts with a split (per cell) 
     #tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
     # Addinfo whether cell ends with a merge (per cell)
     #tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
 
     # Save output data (mask and track files)
-    xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
     tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc'))    
-    print('files saved', flush = True)
+    print('files saved', str(datetime.now()), flush = True)
 
 else:
     print(str(monthly_file), ' does already exist.', flush = True)

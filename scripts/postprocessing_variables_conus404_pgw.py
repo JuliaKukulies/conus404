@@ -1,10 +1,9 @@
 """
-This script produces monthly files of IWP, LWP, condensation rates, surface precipitation and brightness temperatures from standard 3D model WRF output.
+This script produces monthly files of IWP, LWP, condensation rates, surface precipitation and brightness temperatures from standard 3D model WRF output for the C404 PGW dataset.
 
 kukulies@ucar.edu
 
 """
-
 from pathlib import Path 
 import xarray as xr 
 import numpy as np 
@@ -14,15 +13,13 @@ from netCDF4 import Dataset
 import datetime 
 import sys
 
-########################### Directory with model output #####################################
-
+########################### Directory with model output ######################################
 path = Path('/glade/campaign/ncar/USGS_Water/CONUS404_PGW/') 
 out = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/PGW/')
 
 year_in = int(sys.argv[1])
 mon_in = int(sys.argv[2])
 years = np.arange(year_in, year_in  + 1 )
-
 ################################## Function for OLR-Tb conversion ###########################
 
 def get_tb(olr):
@@ -73,23 +70,23 @@ def wstagger_to_mass(W):
     return W_masspoint
 
 ##############################################################################################
-year = year_in
+water_year = year_in
 month = mon_in
-print('input received:', str(year), str(month), flush = True)
+print('input received for water year:', str(water_year), str(month), flush = True)
 
+if int(month) >= 10:
+    # define actual year
+    year = water_year - 1
+    print('water year ', str(water_year), ',but month is in year:', str(year), flush = True )
+else:
+    year = water_year
 
 # check first if month has already been processed 
 out_file = out / ( 'conus404_' + str(year) + str(month).zfill(2) +  '.nc')
 if out_file.is_file():
     print(out_file, ' already processed.',  flush = True)
 else:
-    # subdirectory for specific month
-    if int(month) >= 10:
-        wyyear = year - 1
-        print('water year ', str(wyyear), flush = True )
-    else:
-        wyyear = year 
-    monthly_path = path / ('wy' + str(year)) / (str(wyyear) + str(month).zfill(2))
+    monthly_path = path / ('WY' + str(water_year)) / (str(year) + str(month).zfill(2))
     hourly_files_3d = list(monthly_path.glob('*wrf3d*')) 
     hourly_files_2d = list(monthly_path.glob('*wrf2d*'))
     hourly_files_3d.sort()
@@ -174,7 +171,7 @@ else:
     print(datetime.datetime.now(), flush = True)
     coords = dict(south_north=south_north, west_east=west_east, time = time)
     data = xr.Dataset(data_vars=data_vars, coords=coords)
-    data.to_netcdf( out / ( 'conus404_' + str(wyyear) + str(month).zfill(2) +  '.nc') )  
+    data.to_netcdf( out / ( 'conus404_' + str(year) + str(month).zfill(2) +  '.nc') )  
 
     # close datasets and delete variables     
     del tiwp, tlwp
