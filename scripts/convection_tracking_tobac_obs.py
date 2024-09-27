@@ -194,15 +194,14 @@ if monthly_file.is_file() is False:
     times = np.array([np.datetime64(f'{cftime_obj.year}-{cftime_obj.month:02d}-{cftime_obj.day:02d} '
                                     f'{cftime_obj.hour:02d}:{cftime_obj.minute:02d}')
                       for cftime_obj in tracks.time])
-    tracks['time'] = times
+    tracks['time'] = times.astype('datetime64[ns]')
     mask_xr = xr.DataArray.from_iris(mask)
-    mask_xr.time = precip.time.values
+    mask_xr["time"] = precip.time.values
     
     # check if time coordinates match
-    assert (mask.time.values == tiwp.time.values).all()
+    assert (mask_xr.time.values == tiwp.time.values).all()
     assert (precip.time.values == tiwp.time.values).all()
-    print(track.time.values[0:10] , mask_xr.time.values[0:10], track_xr.time.dtype, mask_xr.time.dtype)
-
+    print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True) 
     tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
 
     # MCS classification

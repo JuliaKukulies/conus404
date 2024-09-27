@@ -17,4 +17,4 @@ mkdir -p $TMPDIR
 echo $PBS_ARRAY_INDEX
 
 ### Run program
-/glade/work/kukulies/conda-envs/iwp_preprocessing/bin/python postprocessing_variables_conus404_pgw.py $PBS_ARRAY_INDEX 06
+/glade/work/kukulies/conda-envs/iwp_preprocessing/bin/python postprocessing_variables_conus404_pgw.py $PBS_ARRAY_INDEX 12

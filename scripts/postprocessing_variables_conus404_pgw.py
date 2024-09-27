@@ -86,35 +86,38 @@ out_file = out / ( 'conus404_' + str(year) + str(month).zfill(2) +  '.nc')
 if out_file.is_file():
     print(out_file, ' already processed.',  flush = True)
 else:
-    monthly_path = path / ('WY' + str(water_year)) / (str(year) + str(month).zfill(2))
-    hourly_files_3d = list(monthly_path.glob('*wrf3d*')) 
-    hourly_files_2d = list(monthly_path.glob('*wrf2d*'))
+    monthly_path = path / ('WY' + str(water_year)) 
+    hourly_files_3d = list(monthly_path.glob(str('wrf3d*'+str(year) +'-' + str(month).zfill(2) + '*') )) 
+    hourly_files_2d = list(monthly_path.glob( str('wrf2d*'+str(year) +'-' + str(month).zfill(2) + '*') ))
     hourly_files_3d.sort()
     hourly_files_2d.sort()
+    print(len(hourly_files_3d), flush = True)
     assert len(hourly_files_3d) == len(hourly_files_3d)
 
     # open file and extract necessary variables 
     print('processing variables for', str(year) +' '+ str(month), ' over ',len(hourly_files_2d), 'files', flush = True)
     print(datetime.datetime.now(), flush = True)
     for file_idx, fname in enumerate(hourly_files_2d):
-        ds2d = xr.open_dataset(fname).squeeze()
-        ds3d = xr.open_dataset(hourly_files_3d[file_idx]).squeeze()
+        ds2d = xr.open_dataset(fname)
+        ds3d = xr.open_dataset(hourly_files_3d[file_idx])
         wrfin = Dataset(hourly_files_3d[file_idx])
 
         # 3d variables 
-        iwc = ds3d.QSNOW + ds3d.QGRAUP + ds3d.QICE
-        lwc = ds3d.QRAIN + ds3d.QCLOUD 
+        iwc = ds3d.QSNOW.squeeze() + ds3d.QGRAUP.squeeze() + ds3d.QICE.squeeze()
+        lwc = ds3d.QRAIN.squeeze() + ds3d.QCLOUD.squeeze()
 
         # get variables that are necessary for calculation of condensation rates
-        w_staggered = ds3d.W
+        w_staggered = ds3d.W.squeeze()
         vertical_velocity = wstagger_to_mass(w_staggered)
-        temp = ds3d.TK
-        pressure = ds3d.P
-        qcloud = ds3d.QCLOUD
+        temp = ds3d.TK.squeeze()
+        pressure = ds3d.P.squeeze()
+        qcloud = ds3d.QCLOUD.squeeze()
 
         # 2d variables 
-        precip = ds2d.PREC_ACC_NC.data 
-        olr = ds2d.OLR.data
+        precip = ds2d.PREC_ACC_NC.squeeze().data 
+        snow = ds2d.SNOW_ACC_NC.squeeze().data 
+        graup = ds2d.GRAUPEL_ACC_NC.squeeze().data
+        olr = ds2d.OLR.squeeze().data
 
         ############ calculate quantities from standard output: LWP, IWP, C, P, Tb ###################    
         brightness_temperature = get_tb(olr)
@@ -132,20 +135,24 @@ else:
             tlwp = lwp
             condensation_rate = condensation_integrated
             surface_precip = precip
+            snow_rate = snow
+            graup_rate = graup
             tb = brightness_temperature
-            time = np.array(ds2d.Time.values) 
+            time = np.array(ds2d.Times.values) 
         else:
             surface_precip = np.dstack((surface_precip, precip))
+            snow_rate = np.dstack((snow_rate, snow))
+            graup_rate = np.dstack((graup_rate, graup))
             tiwp  = np.dstack((tiwp, iwp ))
             tlwp = np.dstack((tlwp, lwp))
             condensation_rate = np.dstack((condensation_rate, condensation_integrated))
             tb = np.dstack((tb, brightness_temperature))
-            time = np.append(time, ds2d.Time.values)
+            time = np.append(time, ds2d.Times.values)
 
 
         # get coords
-        lats = ds2d.XLAT.values
-        lons = ds2d.XLONG.values
+        #lats = ds2d.XLAT.values
+        #lons = ds2d.XLONG.values
         south_north = ds2d.south_north.values
         west_east = ds2d.west_east.values 
 
@@ -156,7 +163,7 @@ else:
 
         del iwc, iwp, lwc, lwp
         del temp, pressure, qcloud, vertical_velocity
-        del precip, olr
+        del precip, olr, snow, graup 
         del condensation_cloud, condensation_integrated, condensation_masked
 
     # write new netCDF file for month 
@@ -165,8 +172,8 @@ else:
                      surface_precip=(["south_north", "west_east", "time"],surface_precip),
                      condensation_rate=(["south_north", "west_east", "time"], condensation_rate),
                      tb=(["south_north", "west_east", "time"], tb),
-                     lats=(["south_north", "west_east"], lats),
-                     lons=(["south_north", "west_east"], lons),)
+                     snow=(["south_north", "west_east", "time"], snow_rate),
+                     graup=(["south_north", "west_east", "time"], graup_rate),)
 
     print(datetime.datetime.now(), flush = True)
     coords = dict(south_north=south_north, west_east=west_east, time = time)
@@ -176,7 +183,8 @@ else:
     # close datasets and delete variables     
     del tiwp, tlwp
     del surface_precip, condensation_rate
-    del lats, lons, tb, time 
+    del tb, time
+    del snow_rate, graup_rate
     data.close()
 
 

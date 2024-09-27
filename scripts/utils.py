@@ -145,6 +145,38 @@ def get_iwp_tendency(tiwp, timedim = 'time', seconds = 3600):
     return tiwp_ten
 
 
+def get_stats_iwp_tendency(features, segments, tiwp, inplace=False):
+    """    
+    Calculate only the IWP tendency for each feature and append it to feature dataframe (based on C404 data).
+    
+    """
+    if not inplace:
+        features = features.copy()
+
+    # initiate variables
+    features["max_iwpten"] = np.nan    
+    features["total_iwpten"] = np.nan
+    features["mean_iwpten"] = np.nan
+    # get positive IWP tendency from CCIC dataset 
+    tiwp_ten = get_iwp_tendency(tiwp)
+    
+    #### get statistics for each detected feature ####
+    
+    # POSITIVE ICE WATER PATH TENDENCY 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
+    
+    # MAX IWP TENDENCY
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
+
+    # MEAN IWP TENDENCY
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, tiwp_ten, statistic=dict(total_precip=np.nanmean), default=np.nan
+    )
+    
+    return features
+
+
+
 def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     """
     
@@ -169,7 +201,8 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     features["total_precip"] = np.nan
     features["total_iwpten"] = np.nan
     features["total_iwp"] = np.nan
-
+    features["mean_iwpten"] = np.nan
+   
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(tiwp)
     
@@ -185,7 +218,11 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     )
 
     # POSITIVE ICE WATER PATH TENDENCY 
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,1:], tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
+
+
+    # POSITIVE ICE WATER PATH TENDENCY 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(mean_iwpten=np.nanmean), default=np.nan)
     
     # MAX IWP
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(max_iwp=np.nanmax), default=np.nan)
@@ -195,14 +232,17 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
         features, segments, precip, statistic=dict(total_precip=np.nansum), default=np.nan
     )
     # POSTITIVE ICE WATER PATH TENDENCY 
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,1:], tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
     
     
     # TOTAL IWP 
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(total_iwp=np.nansum), default=np.nan)
 
     return features 
-    
+
+
+
+
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
     """

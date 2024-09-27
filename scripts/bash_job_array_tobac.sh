@@ -6,10 +6,10 @@
 #PBS -l walltime=24:00:00
 #PBS -q casper
 ### Request subjobs with array indices spanning 2002-2003 (input year)
-#PBS -J 2003-2004
+#PBS -J 2019-2020
 #PBS -j oe
 #PBS -r y
-#PBS -o log_files/tobac_tracking_2003-2004-2019.log
+#PBS -o log_files/tobac_tracking_2019.log
 #PBS -m n
 
 export TMPDIR=/glade/derecho/scratch/$USER/temp
