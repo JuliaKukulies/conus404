@@ -6,7 +6,6 @@ The script also calculates bulk statistics (incl. total precipitation, condensat
 Contact: kukulies@ucar.edu
 
 """
-
 import sys
 from datetime import datetime
 import numpy as np 
@@ -201,11 +200,14 @@ if monthly_file.is_file() is False:
     # check if time coordinates match
     assert (mask_xr.time.values == tiwp.time.values).all()
     assert (precip.time.values == tiwp.time.values).all()
-    print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True) 
+    #print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True) 
     tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
-
+    lonname = "longitude"
+    latname= "latitude"
+    #assert lonname in tracks.columns
+    
     # MCS classification
-    tracks, clusters = utils.process_clusters(tracks)
+    tracks, clusters = utils.process_clusters(tracks, lonname, latname)
     mcs_flag = utils.is_track_mcs_cluster(clusters)
 
     # A little check for the MCS flag result 
@@ -234,10 +236,13 @@ if monthly_file.is_file() is False:
     #tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
     # Addinfo whether cell ends with a merge (per cell)
     #tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
+    del mask_xr.attrs['inplace']
+    print(mask_xr.dtype, mask_xr, flush = True)
+
 
     # Save output data (mask and track files)
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
     tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
     print('files saved', str(datetime.now()), flush = True)
 
 else:

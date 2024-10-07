@@ -170,19 +170,15 @@ def get_stats_iwp_tendency(features, segments, tiwp, inplace=False):
 
     # MEAN IWP TENDENCY
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-        features, segments, tiwp_ten, statistic=dict(total_precip=np.nanmean), default=np.nan
+        features, segments, tiwp_ten, statistic=dict(mean_iwpten=np.nanmean), default=np.nan
     )
-    
     return features
-
-
 
 def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     """
-    
     Calculate the area, maximum precip rate and total precip volume for each feature
-
     """
+    
     if not inplace:
         features = features.copy()
 
@@ -205,9 +201,11 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
    
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(tiwp)
+    tiwp_ten["time"] = segments.time.values[1:]
+    
+    print(segments.time.dtype, features.time.dtype, tiwp_ten.time.dtype, flush = True)
     
     #### get statistics for each detected feature ####
-
     # AREA 
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
     features, segments, area, statistic=dict(area=np.nansum), default=np.nan
@@ -218,11 +216,11 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
     )
 
     # POSITIVE ICE WATER PATH TENDENCY 
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[1:,:,:], tiwp_ten, statistic=dict(max_iwpten=np.nanmax), default=np.nan)
 
 
     # POSITIVE ICE WATER PATH TENDENCY 
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(mean_iwpten=np.nanmean), default=np.nan)
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[1:,:,:], tiwp_ten, statistic=dict(mean_iwpten=np.nanmean), default=np.nan)
     
     # MAX IWP
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(max_iwp=np.nanmax), default=np.nan)
@@ -232,16 +230,11 @@ def get_statistics_obs(features, segments, precip, tiwp, inplace=False):
         features, segments, precip, statistic=dict(total_precip=np.nansum), default=np.nan
     )
     # POSTITIVE ICE WATER PATH TENDENCY 
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[:,:,:-1], tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
-    
-    
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments[1:,:,:], tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
+
     # TOTAL IWP 
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments, tiwp, statistic=dict(total_iwp=np.nansum), default=np.nan)
-
     return features 
-
-
-
 
 
 def get_statistics_conus(features, segments, ds, inplace=False): 
@@ -398,7 +391,7 @@ def is_track_mcs(tracks: pd.DataFrame) -> pd.DataFrame:
 
 
 ### only if merging and splitting is used ###
-def process_clusters(tracks):
+def process_clusters(tracks, lonname, latname):
     groupby_order = ["frame", "track"]
     tracks["cluster"] = (tracks.groupby(groupby_order).feature.cumcount()[tracks.sort_values(groupby_order).index]==0).cumsum().sort_index()
     
@@ -407,9 +400,8 @@ def process_clusters(tracks):
     clusters = gb_clusters.track.first().to_frame().rename(columns=dict(track="cluster_track_id"))
     
     clusters["cluster_time"] = gb_clusters.time.first().to_numpy()
-    
-    clusters["cluster_longitude"] = gb_clusters.apply(lambda x:weighted_circmean(x.lon.to_numpy(), x.area.to_numpy(), low=0, high=360))#, include_groups=False)
-    clusters["cluster_latitude"] = gb_clusters.apply(lambda x:np.average(x.lat.to_numpy(), weights=x.area.to_numpy()))#, include_groups=False)
+    clusters["cluster_longitude"] = gb_clusters.apply(lambda x:weighted_circmean(x[lonname].to_numpy(), x.area.to_numpy(), low=0, high=360))#, include_groups=False)
+    clusters["cluster_latitude"] = gb_clusters.apply(lambda x:np.average(x[latname].to_numpy(), weights=x.area.to_numpy()))#, include_groups=False)
     
     clusters["cluster_area"] = gb_clusters.area.sum().to_numpy()
     clusters["cluster_max_precip"] = gb_clusters.max_precip.max().to_numpy()
