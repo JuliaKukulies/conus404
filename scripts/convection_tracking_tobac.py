@@ -63,7 +63,7 @@ parameters_merge = dict(
 
 for monthly_file in monthly_files:
     month =  str(monthly_file)[-5:-3]
-    output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc')
+    output_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_present.nc')
     print(monthly_file, month, flush = True)
     if output_file.is_file() is False:
         ds = xr.open_dataset(monthly_file)
@@ -71,7 +71,8 @@ for monthly_file in monthly_files:
         coords = {'lon': (["south_north", "west_east"], ds.lons.values), 'lat': (["south_north", "west_east"], ds.lats.values)}
         ds = ds.assign_coords(coords)
         ds = ds.drop_vars(["lats", "lons"])
-
+        lonname = 'lon'
+        latname =  'lat'
         # convert tracking fields to iris cubes 
         tb_iris = ds.tb.to_iris()
         precip_iris = ds.surface_precip.to_iris()
@@ -106,7 +107,7 @@ for monthly_file in monthly_files:
         tracks = utils.get_statistics_conus(tracks, mask, ds, inplace = True)
 
         # MCS classification
-        tracks, clusters = utils.process_clusters(tracks)
+        tracks, clusters = utils.process_clusters(tracks, lonname, latname )
         mcs_flag = utils.is_track_mcs_cluster(clusters)
 
         # A little check for the MCS flag result 
@@ -136,8 +137,8 @@ for monthly_file in monthly_files:
         #tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
 
         # Save output data (mask and track files)
-        xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '.nc'))
-        tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '.nc'))    
+        xr.DataArray.from_iris(mask).to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_present.nc'))
+        tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_present.nc'))    
         print('files saved', flush = True)
 
 
