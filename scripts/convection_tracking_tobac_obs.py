@@ -84,6 +84,7 @@ tbb  = np.flip(ds.Tb, axis =1 )
 tbb['lat'] = -np.flip(tbb.lat, axis = 0)
 tbb = tbb.resample(time = 'H').mean()
 
+
 # crop Tb data 
 tb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
 
