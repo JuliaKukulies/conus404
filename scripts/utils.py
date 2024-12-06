@@ -329,7 +329,132 @@ def get_statistics_conus(features, segments, ds, inplace=False):
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
         features, segments, ds.tb, statistic=dict(min_tb=np.nanmin), default=np.nan)
     
+    return features
+
+
+def get_stats_conus(features, segments, ds, inplace=False): 
+    """
+    Updated statistics calculation - include tendencies and histograms. 
+    
+    Calculate the area, precipitation, condensation and other statistics for each feature
+    detected in CONUS404.
+
+    features: pd.DataFrame (output from tobac) with the tracked features
+    segments: segmentation mask (output from tobac)
+    ds: xr.DataSet containing the 2D CONUS404 postprocessed data.
+
+    Returns:
+       features: the feature dataframe with the statistics
+    
+    """
+    if not inplace:
+        features = features.copy() 
+        
+    # get matrix with area for every grid cell (16 km2)
+    area = ds.surface_precip.copy()
+
+    # get matrix area (16 km2)
+    area = ds.surface_precip.copy()
+    areas = np.full(area.shape, 4*4)
+    area.data = areas
+    #area.data[:] = 4*4
+
+    # initiate variables 
+    features["area"] = np.nan
+    features["max_precip"] = np.nan
+    features["max_con"] = np.nan
+    features["max_iwp"] = np.nan
+    features["max_lwp"] = np.nan
+    features["total_precip"] = np.nan
+    features["total_con"] = np.nan
+    features["total_iwp"] = np.nan
+    features["total_lwp"] = np.nan 
+    features["min_tb"] = np.nan
+    # distributions
+    features['iwp_hist'] = np.nan
+    features['precip_hist'] = np.nan
+    features['condensation_hist'] = np.nan
+    
+    # IWP tendency  
+    features["total_iwpten"] = np.nan
+    # get positive IWP tendency from CCIC dataset 
+    tiwp_ten = get_iwp_tendency(ds.tiwp)
+    
+    # POSITIVE ICE WATER PATH TENDENCY
+    tiwp_ten["time"] = segments.time.values[1:]
+    
+    if timedim == 0:
+        segments_ten = segments[1:,:,:]
+    elif timedim == 2:
+        segments_ten = segments[:,:,1:]
+
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(features, segments_ten, tiwp_ten, statistic=dict(total_iwpten=np.nansum), default=np.nan)
+
+    ### get histogram statistics for each detected feature ###
+    rain_rate_bins = np.linspace(1,200,200)
+    condensation_bins= np.linspace(1, 200,200)
+    iwp_bins = np.array([1e-4, 1e-3, 1e-2, 1e-2, 1e-1, 1, 10])
+
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    features, segments, ds.surface_precip, statistic = dict(precip_hist=np.histogram, {'bins': rain_rate_bins}), default = np.nan)
+    
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    features, segments, ds.tiwp, statistic = dict(iwp_hist=np.histogram, {'bins': iwp_bins}), default =  np.nan)
+    
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    features, segments, ds.condensation_rate*3600, statistic = dict(condensation_hist=np.histogram, {'bins': condensation_bins}), default = np.nan)
+
+    #### get statistics for each detected feature ####
+
+    # AREA 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    features, segments, area, statistic=dict(area=np.nansum), default=np.nan
+    )
+    # MAX PRECIP 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.surface_precip, statistic=dict(max_precip=np.nanmax), default=np.nan
+    )
+
+    # MAX CONDENSATION
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.condensation_rate, statistic=dict(max_con=np.nanmax), default=np.nan
+    )
+    # MAX IWP
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.tiwp, statistic=dict(max_iwp=np.nanmax), default=np.nan
+    )
+
+    # MAX LWP
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.tlwp, statistic=dict(max_lwp=np.nanmax), default=np.nan
+    )
+    
+    # TOTAL PRECIP
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.surface_precip, statistic=dict(total_precip=np.nansum), default=np.nan
+    )
+    # TOTAL CONDENSATION
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.condensation_rate, statistic=dict(total_con=np.nansum), default=np.nan
+    )
+    # TOTAL IWP 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.tiwp, statistic=dict(total_iwp=np.nansum), default=np.nan
+    )
+    
+    # TOTAL LWP 
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.tlwp, statistic=dict(total_lwp=np.nansum), default=np.nan
+    )
+    
+    # MIN TB
+    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+        features, segments, ds.tb, statistic=dict(min_tb=np.nanmin), default=np.nan)
+    
     return features 
+
+
+
 
 
 def max_consecutive_true(condition: np.ndarray[bool]) -> int:
