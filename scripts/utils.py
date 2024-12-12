@@ -50,6 +50,56 @@ def regrid_data(era_var, era_lons, era_lats, conus):
     return regridded
 
 
+def crop_gpm_to_conus(xarray_data):
+    conus_lon_min = -134.02492
+    conus_lon_max = -59.963787
+    conus_lat_min = 19.80349
+    conus_lat_max = 57.837646
+    
+    lons, lats = lon_coords, lat_coords
+    col_start = np.where(lons > conus_lon_min)[0][0]
+    col_end = np.where(lons < conus_lon_max)[0][-1]
+    
+    row_start = np.where(lats  > conus_lat_min)[0][0]
+    row_end = np.where(lats  < conus_lat_max)[0][-1]
+    
+    cropped_gpm = xarray_data[{'lat': slice(row_start, row_end), 'lon': slice(col_start, col_end)}]
+
+    return cropped_gpm
+
+
+
+def regrid_to_conus(input, latname, lonname, ds = 'StageIV'): 
+    '''                                                                                            
+    regrids CCIC, GPM IMERG, or Stage IV to CONUS404 grid. 
+    ''' 
+    from scipy.interpolate import griddata
+
+    if ds == 'StageIV':
+        stage_iv_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc')
+        ds_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
+        stageIV_lon = ds_coords.lon.values
+        stageIV_lat = ds_coords.lat.values
+        input_lons, input_lats = stageIV_lon, stageIV_lat
+    elif ds == 'CCIC':
+        input_lons, input_lats = np.meshgrid(input[lonname].compute().data, input[latname].compute().data)
+    else: 
+        input_lons, input_lats = np.meshgrid(input[lonname].compute().data, input[latname].compute().data)
+
+    # values to regrid as flat array 
+    values = input.compute().data.flatten()
+    points = np.array([ input_lons.flatten(), input_lats.flatten()]).T
+
+    # target grid
+    conus_data = xr.open_dataset(Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/processed/conus404_201010.nc'))
+    target_lons = conus_data.lons.values
+    target_lats = conus_data.lats.values
+    
+    regridded = griddata(points, values, (target_lons, target_lats), method = 'nearest') 
+    return regridded 
+
+
+
 def regrid_merggrid(ds_tb, latname, lonname):
     '''
     regrids the MERG grid (CPC-IR or CCIC) from a regularly spaced
@@ -201,8 +251,7 @@ def get_statistics_obs(features, segments, precip, tiwp, timedim = 0, inplace=Fa
    
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(tiwp)
-    tiwp_ten["time"] = segments.time.values[1:]
-
+    
     if timedim == 0:
         segments_ten = segments[1:,:,:]
     elif timedim == 2:
@@ -328,11 +377,9 @@ def get_statistics_conus(features, segments, ds, inplace=False):
     # MIN TB
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
         features, segments, ds.tb, statistic=dict(min_tb=np.nanmin), default=np.nan)
-    
     return features
 
-
-def get_stats_conus(features, segments, ds, inplace=False): 
+def get_stats_conus(features, segments, ds, timedim = 0, inplace=False): 
     """
     Updated statistics calculation - include tendencies and histograms. 
     
@@ -379,10 +426,10 @@ def get_stats_conus(features, segments, ds, inplace=False):
     features["total_iwpten"] = np.nan
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(ds.tiwp)
-    
-    # POSITIVE ICE WATER PATH TENDENCY
     tiwp_ten["time"] = segments.time.values[1:]
     
+    # POSITIVE ICE WATER PATH TENDENCY
+
     if timedim == 0:
         segments_ten = segments[1:,:,:]
     elif timedim == 2:
@@ -393,16 +440,16 @@ def get_stats_conus(features, segments, ds, inplace=False):
     ### get histogram statistics for each detected feature ###
     rain_rate_bins = np.linspace(1,200,200)
     condensation_bins= np.linspace(1, 200,200)
-    iwp_bins = np.array([1e-4, 1e-3, 1e-2, 1e-2, 1e-1, 1, 10])
+    iwp_bins = np.array([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
 
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-    features, segments, ds.surface_precip, statistic = dict(precip_hist=np.histogram, {'bins': rain_rate_bins}), default = np.nan)
+        features, segments, ds.surface_precip, statistic = dict(precip_hist= (np.histogram, {'bins': rain_rate_bins})), default = np.nan)
     
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-    features, segments, ds.tiwp, statistic = dict(iwp_hist=np.histogram, {'bins': iwp_bins}), default =  np.nan)
+        features, segments, ds.tiwp, statistic = dict(iwp_hist= (np.histogram, {'bins': iwp_bins})), default = np.nan)
     
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-    features, segments, ds.condensation_rate*3600, statistic = dict(condensation_hist=np.histogram, {'bins': condensation_bins}), default = np.nan)
+    features, segments, ds.condensation_rate*3600, statistic = dict(condensation_hist=(np.histogram, {'bins': condensation_bins})), default = np.nan)
 
     #### get statistics for each detected feature ####
 
