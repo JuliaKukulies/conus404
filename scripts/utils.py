@@ -439,8 +439,9 @@ def get_stats_conus(features, segments, ds, timedim = 0, inplace=False):
 
     ### get histogram statistics for each detected feature ###
     rain_rate_bins = np.linspace(1,200,200)
-    condensation_bins= np.linspace(1, 200,200)
-    iwp_bins = np.array([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
+    condensation_bins = np.linspace(1, 200,200)
+    iwp_bins = np.linspace(1,100,200)
+    #iwp_bins = np.array([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
 
     features = tobac.utils.bulk_statistics.get_statistics_from_mask(
         features, segments, ds.surface_precip, statistic = dict(precip_hist= (np.histogram, {'bins': rain_rate_bins})), default = np.nan)
