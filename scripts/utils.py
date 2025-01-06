@@ -50,13 +50,12 @@ def regrid_data(era_var, era_lons, era_lats, conus):
     return regridded
 
 
-def crop_gpm_to_conus(xarray_data):
+def crop_gpm_to_conus(xarray_data, lons, lats):
     conus_lon_min = -134.02492
     conus_lon_max = -59.963787
     conus_lat_min = 19.80349
     conus_lat_max = 57.837646
-    
-    lons, lats = lon_coords, lat_coords
+
     col_start = np.where(lons > conus_lon_min)[0][0]
     col_end = np.where(lons < conus_lon_max)[0][-1]
     

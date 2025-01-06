@@ -94,89 +94,108 @@ print(len(files), 'hourly timesteps of all hurricane')
 print(len(hurricane_tracks), ' individual hurricane in dataset') 
 hurricane_tracks.sort()
 
+print(hurricane_tracks[0])
+print(hurricane_tracks[-1])
+
 for hurricane_files in tqdm(hurricane_tracks):
     hurricane_files.sort()
     hurricane_ds = xr.open_mfdataset(hurricane_files, decode_times= False)
     year = Path(hurricane_files[0]).name[10:14]
-    month = Path(hurricane_files[0]).name[15:17]
-    month_end = Path(hurricane_files[-1]).name[15:17]
-    start_date = Path(hurricane_files[0]).name[10:29]
-    
-    fname = conus404_hist / str('conus404_' +year + month + '.nc')
-    next_month = str(int(month) + 1 ).zfill(2)
-    fname2 = conus404_hist / str('conus404_' + year + next_month+ '.nc')
-    
-    if fname.is_file() and fname2.is_file():
-        # read in two months for conus data if hurricane is on month overlap
-        if month != month_end:
-            print('hurricane occurred inbetween two months:', month,'and ', month_end,  flush = True)
-            ds1= xr.open_dataset(fname)
-            ds2= xr.open_dataset(fname2)
-            conus_data = xr.concat([ds1, ds2], dim='time')
-        #conus_data_pgw    = xr.open_dataset(conus404_pgw / str('conus404_' + year + month + '.nc'))
-        else:
-            conus_data = xr.open_dataset(fname)
-        #conus_data_pgw['time'] = conus_data.time
-        lons = conus_data.lons
-        lats = conus_data.lats
-        base_time = pd.Timestamp('1979-10-01 00:00:00')
-        simulated_times = base_time + pd.to_timedelta(hurricane_ds.time.values, unit='m')
-        hurricane_ds["time"] = simulated_times
-        print('processing hurricane that occurred: ', simulated_times[0], simulated_times[-1])
-        
-        # assign unique labels to hurricane feature detected in each timestep 
-        tc_mask = hurricane_ds.TCmask.copy().load().astype('int64')
-        unique_labels = []
-
-        for t_idx in range(tc_mask.shape[0]): 
-            if np.any(tc_mask[t_idx].values == 1): 
-                label = int(t_idx) 
-                tc_mask[t_idx] = label * tc_mask[t_idx].data
-                unique_labels.append(label)
-            else:
-                unique_labels.append(0) 
-
-        time_indices = np.arange(tc_mask.shape[0])  
-        actual_times = tc_mask.time.values 
-
-        df = pd.DataFrame({
-            'time': actual_times,
-            'time_index': time_indices,
-            'feature': unique_labels})
-
-        # remove timesteps where there is no TC in the conus domain yet 
-        df = df[df.feature > 0 ]
-        # assure that df rows match time dimension
-        if df.shape[0] < hurricane_ds.time.size:
-            tc_mask_binary = hurricane_ds.TCmask[1:]
-        else:
-            tc_mask_binary = hurricane_ds.TCmask
-
-        # subset conus data to same extent as TC mask
-        start = tc_mask.time.values[0]
-        end  = tc_mask.time.values[-1] 
-        start_time = conus_data.time.sel(time=start, method='nearest')
-        end_time =  conus_data.time.sel(time=end, method='nearest')
-        print(start_time, start.data, end_time, end.data )
-        subset_conus = conus_data.sel(time=slice(start_time, end_time), drop = True)
-        assert tc_mask.time.values.size == subset_conus.time.values.size
-        #print(tc_mask.time.values.size, subset_conus.time.values.size)
-        
-        # CALCULATE STATISTICS
-        stats_df = utils.get_stats_conus(df, tc_mask, subset_conus)
-
-        # get center lons and lats add add to dataframe 
-        hurricane_centers_simulated = np.array(get_hurricane_centers(tc_mask_binary, lats, lons))
-        center_lon= hurricane_centers_simulated[:, 1 ]
-        center_lat = hurricane_centers_simulated[:, 0 ]
-        stats_df['center_lat'] = center_lat
-        stats_df['center_lon'] = center_lon 
-        stats_df.to_csv(str(output_dir) + '/hurricane_' + start_date + '_C404_hist.csv', index = False)
-    else:
-        print('no CONUS data for this hurricane', hurricane_files[0]) 
+    if int(year) < 2020:
         continue
+    else:
 
-    
+
+
+        month = Path(hurricane_files[0]).name[15:17]
+        month_end = Path(hurricane_files[-1]).name[15:17]
+        start_date = Path(hurricane_files[0]).name[10:29]
+        # chekc if hurricane has already been processed
+        output_hurricane_file= str(output_dir) + '/hurricane_' + start_date + '_C404_hist.csv'
+
+        fname = conus404_hist / str('conus404_' +year + month + '.nc')
+        next_month = str(int(month) + 1 ).zfill(2)
+        fname2 = conus404_hist / str('conus404_' + year + next_month+ '.nc')
+
+        if Path(output_hurricane_file).is_file():
+            print(output_hurricane_file, ' has already been processed.', flush = True)
+            continue
+        else:
+            if fname.is_file() and fname2.is_file():
+                # read in two months for conus data if hurricane is on month overlap
+                if month != month_end:
+                    print('hurricane occurred inbetween two months:', month,'and ', month_end,  flush = True)
+                    ds1= xr.open_dataset(fname)
+                    ds2= xr.open_dataset(fname2)
+                    conus_data = xr.concat([ds1, ds2], dim='time')
+                #conus_data_pgw    = xr.open_dataset(conus404_pgw / str('conus404_' + year + month + '.nc'))
+                else:
+                    conus_data = xr.open_dataset(fname)
+                #conus_data_pgw['time'] = conus_data.time
+                lons = conus_data.lons
+                lats = conus_data.lats
+                base_time = pd.Timestamp('1979-10-01 00:00:00')
+                simulated_times = base_time + pd.to_timedelta(hurricane_ds.time.values, unit='m')
+                hurricane_ds["time"] = simulated_times
+                print('processing hurricane that occurred: ', simulated_times[0], simulated_times[-1])
+
+                # assign unique labels to hurricane feature detected in each timestep 
+                tc_mask = hurricane_ds.TCmask.copy().load().astype('int64')
+                unique_labels = []
+
+                for t_idx in range(tc_mask.shape[0]): 
+                    if np.any(tc_mask[t_idx].values == 1): 
+                        label = int(t_idx) 
+                        tc_mask[t_idx] = label * tc_mask[t_idx].data
+                        unique_labels.append(label)
+                    else:
+                        unique_labels.append(0) 
+
+                time_indices = np.arange(tc_mask.shape[0])  
+                actual_times = tc_mask.time.values 
+
+                df = pd.DataFrame({
+                    'time': actual_times,
+                    'time_index': time_indices,
+                    'feature': unique_labels})
+
+                # remove timesteps where there is no TC in the conus domain yet 
+                df = df[df.feature > 0 ]
+                # assure that df rows match time dimension
+                if df.shape[0] < hurricane_ds.time.size:
+                    tc_mask_binary = hurricane_ds.TCmask[1:]
+                else:
+                    tc_mask_binary = hurricane_ds.TCmask
+
+                # subset conus data to same extent as TC mask
+                start = tc_mask.time.values[0]
+                end  = tc_mask.time.values[-1] 
+                start_time = conus_data.time.sel(time=start, method='nearest')
+                end_time =  conus_data.time.sel(time=end, method='nearest')
+                print(start_time, start.data, end_time, end.data )
+                subset_conus = conus_data.sel(time=slice(start_time, end_time), drop = True)
+
+                if tc_mask.time.values.size != subset_conus.time.values.size:
+                    print(tc_mask.time.values[0], subset_conus.time.values[0])
+                    print(tc_mask.time.values[-1], subset_conus.time.values[-1])
+                    print(df.shape[0], tc_mask.time.size)
+                    continue
+                else:
+                    # CALCULATE STATISTICS
+                    stats_df = utils.get_stats_conus(df, tc_mask, subset_conus)
+
+                    # get center lons and lats add add to dataframe 
+                    hurricane_centers_simulated = np.array(get_hurricane_centers(tc_mask_binary, lats, lons))
+                    center_lon= hurricane_centers_simulated[:, 1 ]
+                    center_lat = hurricane_centers_simulated[:, 0 ]
+                    stats_df['center_lat'] = center_lat
+                    stats_df['center_lon'] = center_lon 
+                    stats_df.to_csv(output_hurricane_file, index = False)
+            else:
+                print('no CONUS data for this hurricane', hurricane_files[0])
+                continue
+
+
 
 
     
