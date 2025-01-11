@@ -63,7 +63,7 @@ def extract_datetime_from_gpm_filename(file_path):
     """
     date_str = file_path.stem.split('.')[4]
     date_hour_str = date_str.split('S')[0] + date_str.split('S')[1][:2]
-    return np.datetime64(datetime.strptime(date_hour_str, '%Y%m%d-%H'))
+    return np.datetime64(datetime.strptime(date_hour_str, '%Y%m%d-%H'), 'h')
 
 
 def extract_datetime_from_ccic_filename(file_path):
@@ -72,7 +72,7 @@ def extract_datetime_from_ccic_filename(file_path):
     """
     file_path = Path(file_path)
     date_str = file_path.stem.split('_')[2]  # get the '201710010100' part of the fname
-    return np.datetime64(datetime.strptime(date_str, '%Y%m%d%H%M'))
+    return np.datetime64(datetime.strptime(date_str, '%Y%m%d%H%M'), 'h')
 
 ### directories ###
 output_dir = Path('/glade/campaign/mmm/c3we/CPTP_kukulies/conus404/hurricane_stats/')
@@ -104,7 +104,7 @@ for storm in landfall_ds.storm.values:
     # derive the time info 
     year = hurricane_data.time.dt.year.values.astype(int)[0]
     month = hurricane_data.time.dt.month.values.astype(int)[0]
-    #month_end = hurricane_data.time.dropna(dim ='date_time').dt.year.values.astype(int)[-1]
+    #month_end = hurricane_data.time.dropna(dim ='date_time').dt.month.values.astype(int)[-1]
     start_date = str(hurricane_data.time.values[0])
     hurricane_name = str(hurricane_data.name.values)
     
@@ -119,8 +119,11 @@ for storm in landfall_ds.storm.values:
         # interpolate 3-hourly TC centers to hourly values
         start = hurricane_data.time.values[0]
         end = hurricane_data.time.dropna(dim ='date_time').values[-1]
+        start = np.datetime64(start, 'h')
+        end = np.datetime64(end, 'h')
         new_time_points =  pd.date_range(start, end,  freq = '1h').to_numpy()
         print('hurricane persisted for '+ str(new_time_points.size)+ ' hours.', flush = True)
+        print('start:', start, 'end:', end, flush = True)
         time_points = hurricane_data.time.dropna(dim = 'date_time' ).values
         time_indices = (time_points - time_points[0]).astype('timedelta64[s]').astype(float)
         new_time_indices = (new_time_points - new_time_points[0]).astype('timedelta64[s]').astype(float)
@@ -136,9 +139,11 @@ for storm in landfall_ds.storm.values:
         ### CCIC ###
         s3 = s3fs.S3FileSystem(anon=True)
         aws_path = Path('chalmerscloudiceclimatology/record/cpcir/')
-        file_list = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ str(year) +str(month).zfill(2)+'*zarr')
+        file_list = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ str(year)+ '*zarr')
         file_list.sort()
         filtered_files_ccic = [fpath for fpath in file_list if start <= extract_datetime_from_ccic_filename(fpath) <= end]
+        
+        print('files for CCIC:', filtered_files_ccic[0], filtered_files_ccic[-1], flush = True)
 
         for fname in filtered_files_ccic:
             ds_ccic = xr.open_zarr(s3.get_mapper(fname))
@@ -146,122 +151,131 @@ for storm in landfall_ds.storm.values:
             tiwp_cropped = utils.subset_data_to_conus(tiwp_global, 'latitude', 'longitude')
             tiwp_data = tiwp_cropped.load().mean('time')
             if fname == filtered_files_ccic[0]:
-                tiwp = tiwp_data
+                tiwp_xr = tiwp_data
             else:
-                tiwp = xr.concat([tiwp, tiwp_data], dim = 'time')
+                tiwp_xr = xr.concat([tiwp_xr, tiwp_data], dim = 'time')
+
+        tiwp_lats = tiwp_cropped.latitude
+        tiwp_lons = tiwp_cropped.longitude
+        tiwp = xr.DataArray(tiwp_xr.data,coords=[new_time_points, tiwp_lats.values,tiwp_lons.values],dims=['time', 'latitude', 'longitude'])
 
         tiwp = tiwp.transpose('latitude', 'longitude', 'time')
         print('getting GPM IMERG data for CONUS extent and CCIC grid...', flush = True)
 
         ### GPM IMERG ###
         file_path = Path( str('/glade/campaign/mmm/c3we/prein/observations/GPM_IMERG_V07/' + str(year) + '/'))
-        file_list = list(file_path.glob(str('3B*IMERG*'+ str(year) + str(month).zfill(2)+'*')))
+        file_list = list(file_path.glob(str('3B*IMERG*'+ str(year) + '*')))
         file_list.sort()
         # filter file list to get only the files for hurricane lifetime
         filtered_files = [fpath for fpath in file_list if start <= extract_datetime_from_gpm_filename(fpath) <= end ]
-
-        datasets = []
-        for i, fname in enumerate(filtered_files):
-            with h5py.File(fname, 'r') as f:
-                if i == 0:
-                    lat_coords = f['Grid/lat'][:]
-                    lon_coords = f['Grid/lon'][:]
-
-                data = f['Grid/precipitation'][:]
-                coords = {'lat': lat_coords,  'lon': lon_coords}  
-                xarray_data = xr.DataArray(np.array(data).squeeze(), coords=coords, dims=['lon', 'lat'])
-                # crop region over CONUS
-                cropped_gpm = utils.crop_gpm_to_conus(xarray_data, lon_coords, lat_coords)
-              
-                # regrid to CCIC grid
-                lat_grid, lon_grid = np.meshgrid( cropped_gpm.lat.values, cropped_gpm.lon.values,) 
-                target_lons = tiwp.longitude.values
-                target_lats = tiwp.latitude.values
-                target_lat_grid, target_lon_grid = np.meshgrid(target_lats, target_lons)
-
-                points = np.vstack((lon_grid.flatten(), lat_grid.flatten())).T
-                target_points = np.vstack((target_lon_grid.flatten(), target_lat_grid.flatten())).T
-
-                flattened_data = cropped_gpm.values.flatten()
-                interpolated = griddata(points, flattened_data, (target_lon_grid, target_lat_grid), method='nearest')
-                datasets.append(interpolated)
-                del data
-
-        times = pd.date_range(start, end, freq = '30min')
-        regridded_data = np.stack(datasets, axis=0)
-        # create a new xarray DataArray with the regridded data
-        regridded_xarray = xr.DataArray(regridded_data,coords=[times, target_lons, target_lats],dims=['time', 'lon', 'lat'])
-        regridded_gpm = regridded_xarray.transpose('lat', 'lon', 'time')
-        # resample to hourly data 
-        regridded_gpm = stacked.resample(time = '1h').mean()
-
-        print('create the TC mask...', flush = True)
-
-        # create TC mask around hourly centers (based on CCIC grid as well)
-        tiwp_lats = tiwp_cropped.latitude
-        tiwp_lons = tiwp_cropped.longitude
-        lon, lat = np.meshgrid( tiwp_lons, tiwp_lats)
-        time = tiwp.time
-        data = tiwp
-        # quick check to see that interpolated hourly values are same shape as the time dimension of CCIC
         
-        assert time.size == regridded_gpm.time.size ==  hourly_latitudes.size == hourly_longitudes.size
-        # define the radius around TC in degrees 
-        radius_deg = 5
-        R = 6371.0
-        radius_km = radius_deg * (np.pi / 180) * R
+        print('files for GPM:', filtered_files[0], filtered_files[-1], flush = True)
+        new_end = end + np.timedelta64(30, 'm') 
+        times = pd.date_range(start, new_end, freq = '30min')
+        # check if number of files is consistent with time dimension
+        if times.size != len(filtered_files):
+            print(len(filtered_files), 'not all files found for GPM', flush = True)
+            continue
+        else:
 
-        # create an empty mask with the same shape as the xarray DataArray
-        mask = xr.DataArray(np.zeros(data.shape, dtype=int), 
-                    coords = data.coords,
-                    dims=data.dims)
-        
-        # loop through each time step
-        for idx, t in tqdm(enumerate(range(len(time)))):
-            lat_ref  = hourly_latitudes[idx]
-            lon_ref  = hourly_longitudes[idx]
-            lon_grid =  lon
-            lat_grid =  lat 
-            lon_ref_rad = np.radians(lon_ref)
-            lat_ref_rad = np.radians(lat_ref)
-            lon_grid_rad = np.radians(lon_grid)
-            lat_grid_rad = np.radians(lat_grid)
+            datasets = []
+            for i, fname in enumerate(filtered_files):
+                with h5py.File(fname, 'r') as f:
+                    if i == 0:
+                        lat_coords = f['Grid/lat'][:]
+                        lon_coords = f['Grid/lon'][:]
 
-            dlon = lon_grid_rad - lon_ref_rad
-            dlat = lat_grid_rad - lat_ref_rad
-            a = np.sin(dlat / 2)**2 + np.cos(lat_ref_rad) * np.cos(lat_grid_rad) * np.sin(dlon / 2)**2
-            c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-            distance = R * c 
-            condition = distance <= radius_km
-            mask.loc[{"time": mask.time[t]}] = condition.astype(int)
+                    data = f['Grid/precipitation'][:]
+                    coords = {'lat': lat_coords,  'lon': lon_coords}  
+                    xarray_data = xr.DataArray(np.array(data).squeeze(), coords=coords, dims=['lon', 'lat'])
+                    # crop region over CONUS
+                    cropped_gpm = utils.crop_gpm_to_conus(xarray_data, lon_coords, lat_coords)
 
+                    # regrid to CCIC grid
+                    lat_grid, lon_grid = np.meshgrid( cropped_gpm.lat.values, cropped_gpm.lon.values,) 
+                    target_lons = tiwp.longitude.values
+                    target_lats = tiwp.latitude.values
+                    target_lat_grid, target_lon_grid = np.meshgrid(target_lats, target_lons)
 
-        mask.to_netcdf('hurricane_mask_'+ hurricane_name+'_'+ start_date+ '.nc')
-        print('mask saved.', flush = True)
-            
-        # corresponding feature dataframe in which the statistics will be saved            
-        feature_mask = mask.copy()
-        # start with this nr for unique d=feature label assignment
-        feature_counter = 1
-        features = []
+                    points = np.vstack((lon_grid.flatten(), lat_grid.flatten())).T
+                    target_points = np.vstack((target_lon_grid.flatten(), target_lat_grid.flatten())).T
 
-        for t_idx, time in tqdm(enumerate(mask.time.values)):
-            mask_t = mask.isel(time=t_idx)
-            feature_mask[:,:,t_idx] = mask_t.where(mask_t != 1 , feature_counter )
-            if np.unique(mask_t.values).size == 2:
-                features.append({"feature": feature_counter, "time": time})
-                feature_counter += 1  
+                    flattened_data = cropped_gpm.values.flatten()
+                    interpolated = griddata(points, flattened_data, (target_lon_grid, target_lat_grid), method='nearest')
+                    datasets.append(interpolated)
+                    del data
 
-        df_features = pd.DataFrame(features)
+            regridded_data = np.stack(datasets, axis=0)
+            # create a new xarray DataArray with the regridded data
+            regridded_xarray = xr.DataArray(regridded_data,coords=[times, target_lons, target_lats],dims=['time', 'lon', 'lat'])
+            regridded_gpm = regridded_xarray.transpose('lat', 'lon', 'time')
+            # resample to hourly data 
+            regridded_gpm = regridded_gpm.resample(time = '1h').mean()
 
-        # CALCULATE STATISTICS based on df_features, feature_mask, regridded_gpm and tiwp
-        # quick check that TC mask, CCIC, and GPM data all have the same shape
-        assert feature_mask.shape == subset_tiwp.shape == regridded_gpm.shape
+            print('create the TC mask...', flush = True)
 
-        print('calculating the statistics...', flush = True)
-        observed_track = utils.get_statistics_obs(df_features, feature_mask, regridded_gpm, tiwp, timedim = 2 , inplace = True) 
-        # save observed statistics to netcdf 
-        observed_track.to_xarray().to_netcdf(output_hurricane_file) 
+            # create TC mask around hourly centers (based on CCIC grid as well)
+            lon, lat = np.meshgrid( tiwp_lons, tiwp_lats)
+            time = tiwp.time
+            data = tiwp
+            # quick check to see that interpolated hourly values are same shape as the time dimension of CCIC
+            print(time.size, regridded_gpm.time.size, hourly_latitudes.size, hourly_longitudes.size)
+            assert time.size ==  hourly_latitudes.size == hourly_longitudes.size
+            # define the radius around TC in degrees 
+            radius_deg = 5
+            R = 6371.0
+            radius_km = radius_deg * (np.pi / 180) * R
+
+            # create an empty mask with the same shape as the xarray DataArray
+            mask = xr.DataArray(np.zeros(data.shape, dtype=int), 
+                        coords = data.coords,
+                        dims=data.dims)
+
+            # loop through each time step
+            for idx, t in tqdm(enumerate(range(len(time)))):
+                lat_ref  = hourly_latitudes[idx]
+                lon_ref  = hourly_longitudes[idx]
+                lon_grid =  lon
+                lat_grid =  lat 
+                lon_ref_rad = np.radians(lon_ref)
+                lat_ref_rad = np.radians(lat_ref)
+                lon_grid_rad = np.radians(lon_grid)
+                lat_grid_rad = np.radians(lat_grid)
+
+                dlon = lon_grid_rad - lon_ref_rad
+                dlat = lat_grid_rad - lat_ref_rad
+                a = np.sin(dlat / 2)**2 + np.cos(lat_ref_rad) * np.cos(lat_grid_rad) * np.sin(dlon / 2)**2
+                c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+                distance = R * c 
+                condition = distance <= radius_km
+                mask.loc[{"time": mask.time[t]}] = condition.astype(int)
+
+            mask.to_netcdf(output_dir / str('hurricane_mask_'+ str(hurricane_name)+'_'+ str(start_date)+ '.nc'))
+            print('mask saved.', flush = True)
+
+            # corresponding feature dataframe in which the statistics will be saved            
+            feature_mask = mask.copy()
+            # start with this nr for unique d=feature label assignment
+            feature_counter = 1
+            features = []
+
+            for t_idx, time in tqdm(enumerate(mask.time.values)):
+                mask_t = mask.isel(time=t_idx)
+                feature_mask[:,:,t_idx] = mask_t.where(mask_t != 1 , feature_counter )
+                if np.unique(mask_t.values).size == 2:
+                    features.append({"feature": feature_counter, "time": time})
+                    feature_counter += 1  
+
+            df_features = pd.DataFrame(features)
+
+            # CALCULATE STATISTICS based on df_features, feature_mask, regridded_gpm and tiwp
+            # quick check that TC mask, CCIC, and GPM data all have the same shape
+            assert feature_mask.shape == tiwp.shape == regridded_gpm.shape
+
+            print('calculating the statistics...', flush = True)
+            observed_track = utils.get_statistics_obs(df_features, feature_mask, regridded_gpm, tiwp, timedim = 2 , inplace = True) 
+            # save observed statistics to netcdf 
+            observed_track.to_csv(output_hurricane_file) 
 
 
     
