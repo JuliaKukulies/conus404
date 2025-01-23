@@ -88,8 +88,10 @@ for month in np.arange(1,13):
 
         # RMSE, bias, correlation with CONUS404 instantanous values
         model = conus_ds.tiwp.transpose('time', 'south_north', 'west_east').values
-        rmse = np.sqrt(np.mean((model - regridded_data) ** 2))
-        bias = np.mean(model- regridded_data)
+
+        valid_mask = ~np.isnan(model) & ~np.isnan(regridded_data)  
+        rmse = np.sqrt(np.nanmean((model[valid_mask] - regridded_data[valid_mask]) ** 2))
+        bias = np.nanmean(model[valid_mask]- regridded_data[valid_mask])
 
         # remove nan values 
         valid_indices = ~np.isnan(model) & ~np.isnan(regridded_data)
@@ -146,8 +148,9 @@ for month in np.arange(1,13):
 
         # RMSE, bias, correlation with CONUS404 instantanous values
         model = conus_ds.surface_precip.transpose('time', 'south_north', 'west_east').values
-        rmse = np.sqrt(np.mean((model - regridded_data) ** 2))
-        bias = np.mean(model- regridded_data)
+        valid_mask = ~np.isnan(model) & ~np.isnan(regridded_data)  
+        rmse = np.sqrt(np.nanmean((model[valid_mask] - regridded_data[valid_mask]) ** 2))
+        bias = np.nanmean(model[valid_mask]- regridded_data[valid_mask])
 
         valid_indices = ~np.isnan(model) & ~np.isnan(regridded_data)
         cleaned_model = model[valid_indices]
@@ -207,8 +210,9 @@ for month in np.arange(1,13):
         np.save(out_dir / str('gpm_imerg_histogram_' + year+ month  ), precip_hist)
 
         # RMSE, bias, correlation with CONUS404 instantanous values 
-        rmse = np.sqrt(np.mean((model - regridded_data_hourly) ** 2))
-        bias = np.mean(model- regridded_data_hourly)
+        valid_mask = ~np.isnan(model) & ~np.isnan(regridded_data_hourly)  
+        rmse = np.sqrt(np.nanmean((model[valid_mask] - regridded_data_hourly[valid_mask]) ** 2))
+        bias = np.nanmean(model[valid_mask]- regridded_data_hourly[valid_mask])
         valid_indices = ~np.isnan(model) & ~np.isnan(regridded_data_hourly)
         cleaned_model = model[valid_indices]
         cleaned_regridded_data = regridded_data_hourly[valid_indices]

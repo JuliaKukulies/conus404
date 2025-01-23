@@ -29,16 +29,16 @@ def compute_total_mean(file_paths, var, chunk_size= None):
         variable_data = ds[var].squeeze()
         # update sum per file
         if total_sum is None:
-            total_sum = variable_data.sum(dim = 'time')
+            total_sum = variable_data.mean(dim = 'time')
             total_count = variable_data.time.size 
         else:
-            total_sum += variable_data.sum(dim = 'time')
+            total_sum += variable_data.mean(dim = 'time')
             total_count += variable_data.time.size
 
         ds.close()
 
     # compute mean over all months 
-    total_mean = variable_data / total_count 
+    total_mean = total_sum / total_count
     return total_mean
 
 ######################################### main program ###################################

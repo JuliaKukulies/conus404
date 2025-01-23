@@ -97,6 +97,42 @@ def regrid_to_conus(input, latname, lonname, ds = 'StageIV'):
     regridded = griddata(points, values, (target_lons, target_lats), method = 'nearest') 
     return regridded 
 
+def get_bulk_pe_iwp(dataframe, group = 'track', lifetime = True): 
+    """
+    Get the bulk total PE from IWP and precipitation based on the feature dataframes
+    for detected storm features with bulk statistics. 
+    
+    """
+
+    if group is None:
+        bulk_precip_iwp = dataframe.total_precip.sum() / 3600 
+        bulk_con_iwp = dataframe.total_iwpten.sum() +  (dataframe.total_precip.sum() / 3600) 
+        bulk_PE_iwp = bulk_precip_iwp / bulk_con_iwp
+    
+    else:
+        bulk_precip_iwp = dataframe.groupby(group).total_precip.sum() / 3600 
+        bulk_con_iwp = dataframe.groupby(group).total_iwpten.sum() +  (dataframe.groupby(group).total_precip.sum() / 3600) 
+        bulk_PE_iwp = bulk_precip_iwp.values / bulk_con_iwp.values
+    
+    return bulk_PE_iwp
+
+
+def get_bulk_PE(dataframe, group = 'track', lifetime = True): 
+    """
+    Get the bulk total PE based on the dataframe for detected features with bulk statistics.
+    """
+
+    if group is None:
+        bulk_precip = dataframe.total_precip.sum()  / 3600 
+        bulk_con = dataframe.total_con.sum()
+        bulk_PE = bulk_precip / bulk_con
+
+    else:
+        bulk_precip = dataframe.groupby(group).total_precip.sum()  / 3600 
+        bulk_con = dataframe.groupby(group).total_con.sum()
+        bulk_PE = bulk_precip.values / bulk_con.values
+        
+    return bulk_PE
 
 
 def regrid_merggrid(ds_tb, latname, lonname):
