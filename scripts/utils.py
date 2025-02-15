@@ -12,6 +12,8 @@ import pandas as pd
 import tobac
 from tobac.utils.periodic_boundaries import weighted_circmean
 
+
+
 def get_tb(olr):
     """                                                                                                       
     This function converts outgoing longwave radiation to brightness temperatures.                             
@@ -31,6 +33,35 @@ def get_tb(olr):
     Tf = (abs(olr)/sig) ** (1./4)
     tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
     return tb 
+
+
+
+def filter_storm_types(df, group = 'track'):
+    """
+    
+    Function to filter three storm categories out of tobac convection tracking. 
+
+    Parameters: 
+        df (pd.DataFrame): feature output dataframe from tobac tracking 
+        group(str): optional, choose on which storm level the storms are subdivided (cell or tracks), default: 'track'
+    
+    """
+    mcs = df[df.mcs_flag == True]
+    rest = df[df.mcs_flag == False]
+    mucc = pd.DataFrame(columns = df.columns)
+    dc = pd.DataFrame(columns = df.columns)
+    
+    for track in rest[group].unique():
+        storm_track = df[df[group]== track] 
+        if storm_track.area.max() >= 1e4:
+            mucc = pd.concat([mucc, storm_track], ignore_index = True)
+        else:
+            dc = pd.concat([dc, storm_track], ignore_index = True)
+
+    assert mucc.shape[0] + dc.shape[0] + mcs.shape[0] == df.shape[0]
+
+    return mcs, mucc, dc 
+
 
 def regrid_data(era_var, era_lons, era_lats, conus): 
     """
@@ -207,6 +238,32 @@ def subset_data_to_conus(dataset: xr.Dataset, latname, lonname) -> xr.Dataset:
     row_end = np.where(lats_cpcir > conus_lat_min)[0][-1] 
     
     return dataset[{latname: slice(row_start, row_end), lonname: slice(col_start, col_end)}]
+
+
+def get_hurricane_centers(hurricane_mask, lats, lons):
+    """
+    
+    Get TC centers from TempestExtreme mask. 
+    
+    """
+    # Ensure that the input is a binary mask (1 for hurricane, 0 for no hurricane)
+    assert np.all(np.isin(hurricane_mask.values, [0, 1])), "Mask values should be binary (0 or 1)"
+    
+    # Create an empty list to store the center coordinates (lon, lat) for each timestep
+    hurricane_centers = []
+
+    # Iterate through each timestep
+    for t in hurricane_mask.time.values:
+        mask_t = hurricane_mask.sel(time = t ).data
+
+        lat_values = lats.where(mask_t== 1)
+        lon_values = lons.where(mask_t == 1)
+        
+        center_lat = np.nanmean(lat_values.values)
+        center_lon = np.nanmean(lon_values.values)
+        
+        hurricane_centers.append((center_lat, center_lon))
+    return hurricane_centers
 
 
 def get_iwp_tendency(tiwp, timedim = 'time', seconds = 3600):

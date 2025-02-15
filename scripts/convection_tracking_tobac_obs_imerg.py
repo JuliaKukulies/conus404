@@ -7,6 +7,7 @@ Contact: kukulies@ucar.edu
 
 """
 import sys
+from scipy.interpolate import griddata 
 from datetime import datetime
 import numpy as np 
 from pathlib import Path 
@@ -16,6 +17,7 @@ import warnings
 warnings.filterwarnings("ignore")
 import utils 
 import tobac
+import h5py
 print('using tobac version ', tobac.__version__, flush = True) 
 
 #### input parameter ####
@@ -23,8 +25,7 @@ year = str(sys.argv[1])
 
 #### DIRECTORIES ####
 
-# StageIV data
-stageIV= Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/data/')
+gpm_path = Path( str('/glade/campaign/mmm/c3we/prein/observations/GPM_IMERG_V07/' + str(year) + '/'))
 
 # MERGIR data
 mergir = Path('/glade/campaign/mmm/c3we/prein/observations/GPM_MERGIR/data')
@@ -60,102 +61,109 @@ parameters_segmentation['statistic'] = {"object_min_tb": np.nanmin, 'object_max_
 parameters_merge = dict(
     distance=dxy*20,)
 
-# get coordinates for StageIV dataset 
-stage_iv_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc') 
-ds_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
 
 ################################ processing monthly files ######################################
-month =  str(sys.argv[2])
-
-# get monthly file for Stage IV
-monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc') 
-ds_prec = xr.open_dataset(monthly_file_prec)
-precip = ds_prec.Precipitation
-# have time dimension as last dimension 
-precip = precip.transpose("rlat", "rlon", "time")
-precip['lat'] = ds_coords.lat
-precip['lon'] = ds_coords.lon
+month =  str(sys.argv[2]).zfill(2)
 
 # get monthly file for Tb (crop, regrid, and set nan)
 monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
 ds = xr.open_mfdataset(monthly_file_ir)
-# latitudes are flipped in IR data 
+# latitudes are flipped in IR data, so fix that 
 tbb  = np.flip(ds.Tb, axis =1 )
 tbb['lat'] = -np.flip(tbb.lat, axis = 0)
 tbb = tbb.resample(time = 'H').mean()
-
+times = tbb.time.values
 
 # crop Tb data 
-tb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
-
-print('processing Tb data...', str(datetime.now()) , flush = True )
-# regrid merg DATA 
-for tt in tb_cropped.time:
-    regridded = utils.regrid_merggrid(tb_cropped.sel(time =tt), 'lat', 'lon')
-    if tt == tb_cropped.time[0]:
-        regridded_tb = regridded
-        continue
-    else:
-        regridded_tb = np.dstack([regridded_tb, regridded])
-
-# set NaN where there is no precip data 
-tb_nan = utils.filter_data_for_valid_stageIV(regridded_tb, precip)
-tb = precip.copy()
-tb = tb.rename('Tb')
-tb.data = tb_nan
-
+tbb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
 # fix meta data so data array can be converted to iris cube
 attributes= {'units':'K', 'long_name':'brightness_temperature'}
-tb = tb.assign_attrs(attributes, inplace = True)
+tbb_cropped = tbb_cropped.assign_attrs(attributes, inplace = True)
 
 # convert tracking fields to iris 
-tb_iris = tb.to_iris()
-
+tb_iris = tbb_cropped.to_iris()
 
 # get monthly file for CCIC (crop, regrid, and set nan)
 import ccic
 import s3fs
 
-# Create a filesystem for S3
+### CCIC ###
 s3 = s3fs.S3FileSystem(anon=True)
-# Lazy load a CCIC file
 aws_path = Path('chalmerscloudiceclimatology/record/cpcir/')
-fname = aws_path / year / 'ccic_cpcir_201801030000.zarr'
-fnames = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ year +month +'*zarr') 
-fnames.sort()
+file_list_ccic = s3.glob(str(aws_path) + '/'+ str(year) +  '/*'+ str(year)+ str(month)+'*zarr')
+file_list_ccic.sort()
+print('files for CCIC:', len(file_list_ccic), flush = True)
 
-# read in all monthly files
-print('access and processes CCIC data from AWS cloud...', flush = True)
-for fname in fnames:
-    # read in one file 
+for fname in file_list_ccic:
     ds_ccic = xr.open_zarr(s3.get_mapper(fname))
-    tiwp = ds_ccic.tiwp
-    
-    # crop region
-    tiwp_cropped = utils.subset_data_to_conus(tiwp, 'latitude', 'longitude')
+    tiwp_global = ds_ccic.tiwp
+    # crop data (no regridding) 
+    tiwp_cropped = utils.subset_data_to_conus(tiwp_global, 'latitude', 'longitude')
+    tiwp_data = tiwp_cropped.load().mean('time')
+    if fname == file_list_ccic[0]:
+        tiwp_xr = tiwp_data
+    else:
+        tiwp_xr = xr.concat([tiwp_xr, tiwp_data], dim = 'time')
 
-    # Load `tiwp` into memory and take hourly average 
-    tiwp_data = tiwp_cropped.load().mean('time') 
-    
-    # regrid
-    regridded_tiwp = utils.regrid_merggrid(tiwp_data, 'latitude', 'longitude')
-    if fname == fnames[0]:
-        tiwp_ds = regridded_tiwp
-        continue
-    else: 
-        # concatenate on time dim 
-        tiwp_ds  = np.dstack([ tiwp_ds, regridded_tiwp])
-        del ds_ccic, tiwp
+tiwp_lats = tiwp_cropped.latitude
+tiwp_lons = tiwp_cropped.longitude
+tiwp = xr.DataArray(tiwp_xr.data,coords=[times, tiwp_lats.values,tiwp_lons.values],dims=['time', 'latitude', 'longitude'])
+tiwp = tiwp.transpose('latitude', 'longitude', 'time')
+print('processing done for CCIC data', flush = True)
+print('dimensions for tracking input ', tiwp.dims, flush = True)
 
-tiwp = precip.copy()
-tiwp = tiwp.rename('TIWP')
-tiwp.data = tiwp_ds
+# get monthly data for GPM IMERG 
+gpm_file_list = list(gpm_path.glob(str('3B*IMERG*'+ str(year) + str(month)+ '*')))
+gpm_file_list.sort()
+print(len(gpm_file_list), ' files for GPM for month', str(month), str(year),  flush = True)
 
-### monthly input: tiwp, tb_iris precip 
+# get all 30-min files together and process (from TC script) 
+datasets = []
+for i, fname in enumerate(gpm_file_list):
+    with h5py.File(fname, 'r') as f:
+        if i == 0:
+            lat_coords = f['Grid/lat'][:]
+            lon_coords = f['Grid/lon'][:]
+
+        data = f['Grid/precipitation'][:]
+        coords = {'lat': lat_coords,  'lon': lon_coords}  
+        xarray_data = xr.DataArray(np.array(data).squeeze(), coords=coords, dims=['lon', 'lat'])
+        # crop region over CONUS
+        cropped_gpm = utils.crop_gpm_to_conus(xarray_data, lon_coords, lat_coords)
+
+        # regrid to CCIC grid
+        lat_grid, lon_grid = np.meshgrid( cropped_gpm.lat.values, cropped_gpm.lon.values,) 
+        target_lons = tiwp.longitude.values
+        target_lats = tiwp.latitude.values
+        target_lat_grid, target_lon_grid = np.meshgrid(target_lats, target_lons)
+
+        points = np.vstack((lon_grid.flatten(), lat_grid.flatten())).T
+        target_points = np.vstack((target_lon_grid.flatten(), target_lat_grid.flatten())).T
+
+        flattened_data = cropped_gpm.values.flatten()
+        interpolated = griddata(points, flattened_data, (target_lon_grid, target_lat_grid), method='nearest')
+        datasets.append(interpolated)
+        del data
+
+regridded_data = np.stack(datasets, axis=0)
+# create a new xarray DataArray with the regridded data
+regridded_xarray = xr.DataArray(regridded_data,coords=[times, target_lons, target_lats],dims=['time', 'lon', 'lat'])
+regridded_gpm = regridded_xarray.transpose('lat', 'lon', 'time')
+# resample to hourly data, this data contains the hourly average rain rate of GPM over CONUS
+# CCIC grid (same that is used for TC tracking)
+precip = regridded_gpm.resample(time = '1h').mean()
+
+print('GPM IMERG precip pre-processing done,data ready to be used in tracking', flush = True)
+print('input dims of precip: ', precip.dims, flush = True)
+
+
+
+### monthly input
+# variable names tiwp, tb_iris, precip 
 assert precip.shape == tb_iris.data.shape
 assert tiwp.shape == precip.shape
 
-monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_stageiv.nc')
+monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_imerg.nc')
 print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
@@ -202,8 +210,7 @@ if monthly_file.is_file() is False:
     tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
     lonname = "longitude"
     latname= "latitude"
-    #assert lonname in tracks.columns
-    
+
     # MCS classification
     tracks, clusters = utils.process_clusters(tracks, lonname, latname)
     mcs_flag = utils.is_track_mcs_cluster(clusters)
@@ -229,18 +236,12 @@ if monthly_file.is_file() is False:
     tracks = tracks.merge( merges.cell_parent_track_id.to_dataframe(), on='cell', how='left') 
     # Add how many features belong to each cell (per cell) 
     tracks = tracks.merge( merges.cell_child_feature_count.to_dataframe(), on='cell', how='left')
-
-    # Add whether the cell starts with a split (per cell) 
-    #tracks =tracks.merge( merges.cell_starts_with_split.to_dataframe(), on='cell', how='left')
-    # Addinfo whether cell ends with a merge (per cell)
-    #tracks =tracks.merge( merges.cell_ends_with_merge.to_dataframe(), on='cell', how='left')
     del mask_xr.attrs['inplace']
     print(mask_xr.dtype, mask_xr, flush = True)
 
-
     # Save output data (mask and track files)
-    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_stageiv.nc'))    
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_stageiv.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_imerg.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_imerg.nc'))
     print('files saved', str(datetime.now()), flush = True)
 
 else:
