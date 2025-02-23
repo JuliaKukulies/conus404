@@ -103,8 +103,10 @@ for monthly_file in monthly_files:
         mask, tracks = tobac.segmentation_2D(tracks, tb_iris, dxy, **parameters_segmentation)
 
         # Bulk statistics for identified cloud objects
-        print('Calculating the statistics...', flush = True)
-        tracks = utils.get_statistics_conus(tracks, mask, ds, inplace = True)
+        print('Calculating the statistics for ', tracks.feature.unique().size, ' features.', flush = True)
+        # get_statistics_conus(tracks, mask, ds, inplace = True) 
+        tracks = utils.get_stats_conus(tracks, mask, ds, timedim = 0)
+        #print(mask.dims, flush = True)
 
         # MCS classification
         tracks, clusters = utils.process_clusters(tracks, lonname, latname )

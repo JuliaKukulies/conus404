@@ -79,14 +79,22 @@ precip['lon'] = ds_coords.lon
 # get monthly file for Tb (crop, regrid, and set nan)
 monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
 ds = xr.open_mfdataset(monthly_file_ir)
-# latitudes are flipped in IR data 
+
+# latitudes are flipped in IR data, so fix that                                                    
 tbb  = np.flip(ds.Tb, axis =1 )
-tbb['lat'] = -np.flip(tbb.lat, axis = 0)
+tbb['lat'] = np.flip(tbb.lat, axis = 0)
 tbb = tbb.resample(time = 'H').mean()
 
-
-# crop Tb data 
-tb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
+# crop Tb data                                                                                     
+tbb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
+# fix meta data so data array can be converted to iris cube                                        
+attributes= {'units':'K', 'long_name':'brightness_temperature'}
+tbb_cropped = tbb_cropped.assign_attrs(attributes, inplace = True)
+tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
+# interpolate nan values (crucial for tracking on native grid,                                     
+# because otherwise way less features are identified in the obs data compared to model)           
+tb_cropped= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
+tb_cropped['lat'] =tb_cropped.lat
 
 print('processing Tb data...', str(datetime.now()) , flush = True )
 # regrid merg DATA 
@@ -155,7 +163,7 @@ tiwp.data = tiwp_ds
 assert precip.shape == tb_iris.data.shape
 assert tiwp.shape == precip.shape
 
-monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_stageiv.nc')
+monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_STAGEIV.nc')
 print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
@@ -239,8 +247,8 @@ if monthly_file.is_file() is False:
 
 
     # Save output data (mask and track files)
-    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_stageiv.nc'))    
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_stageiv.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_STAGEIV.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_STAGEIV.nc'))
     print('files saved', str(datetime.now()), flush = True)
 
 else:

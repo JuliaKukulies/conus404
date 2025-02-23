@@ -61,27 +61,40 @@ parameters_segmentation['statistic'] = {"object_min_tb": np.nanmin, 'object_max_
 parameters_merge = dict(
     distance=dxy*20,)
 
-
 ################################ processing monthly files ######################################
 month =  str(sys.argv[2]).zfill(2)
 
 # get monthly file for Tb (crop, regrid, and set nan)
 monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
+print(len(monthly_file_ir), ' files for MERGIR.', flush = True) 
 ds = xr.open_mfdataset(monthly_file_ir)
 # latitudes are flipped in IR data, so fix that 
 tbb  = np.flip(ds.Tb, axis =1 )
-tbb['lat'] = -np.flip(tbb.lat, axis = 0)
+tbb['lat'] = np.flip(tbb.lat, axis = 0)
+start= datetime(int(year), int(month),1,0,0 )
+# replace with right number of days for respective month!
+last_day =  int(calendar.monthrange(int(year), int(month))[1]) 
+end = datetime(int(year), int(month), last_day,23,30)
+times_30min = pd.date_range(start,end, freq = '30min')
 tbb = tbb.resample(time = 'H').mean()
 times = tbb.time.values
 
 # crop Tb data 
 tbb_cropped = utils.subset_data_to_conus(tbb, 'lat', 'lon')
+#tbb_cropped['lat'] = -np.flip(tbb_cropped.lat, axis = 0)
 # fix meta data so data array can be converted to iris cube
 attributes= {'units':'K', 'long_name':'brightness_temperature'}
 tbb_cropped = tbb_cropped.assign_attrs(attributes, inplace = True)
+tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
+# interpolate nan values (crucial for tracking on native grid,
+# because otherwise way less features are identified in the obs data compared to model) 
+tbb_filled= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
+tbb_filled['lat'] = tbb_filled
 
+print(tbb_filled.lat.values, tbb_filled.lon.values, flush = True)
+    
 # convert tracking fields to iris 
-tb_iris = tbb_cropped.to_iris()
+tb_iris = tbb_filled.to_iris()
 
 # get monthly file for CCIC (crop, regrid, and set nan)
 import ccic
@@ -119,12 +132,14 @@ print(len(gpm_file_list), ' files for GPM for month', str(month), str(year),  fl
 
 # get all 30-min files together and process (from TC script) 
 datasets = []
+gpm_times = np.array(())
+
 for i, fname in enumerate(gpm_file_list):
     with h5py.File(fname, 'r') as f:
         if i == 0:
             lat_coords = f['Grid/lat'][:]
             lon_coords = f['Grid/lon'][:]
-
+        gpm_times = np.append(gpm_times, np.array(f['Grid/time'][:]))
         data = f['Grid/precipitation'][:]
         coords = {'lat': lat_coords,  'lon': lon_coords}  
         xarray_data = xr.DataArray(np.array(data).squeeze(), coords=coords, dims=['lon', 'lat'])
@@ -146,8 +161,8 @@ for i, fname in enumerate(gpm_file_list):
         del data
 
 regridded_data = np.stack(datasets, axis=0)
-# create a new xarray DataArray with the regridded data
-regridded_xarray = xr.DataArray(regridded_data,coords=[times, target_lons, target_lats],dims=['time', 'lon', 'lat'])
+# create a new xarray DataArray with the regridded data 
+regridded_xarray = xr.DataArray(regridded_data,coords=[times_30min, target_lons, target_lats],dims=['time', 'lon', 'lat'])
 regridded_gpm = regridded_xarray.transpose('lat', 'lon', 'time')
 # resample to hourly data, this data contains the hourly average rain rate of GPM over CONUS
 # CCIC grid (same that is used for TC tracking)
@@ -156,14 +171,11 @@ precip = regridded_gpm.resample(time = '1h').mean()
 print('GPM IMERG precip pre-processing done,data ready to be used in tracking', flush = True)
 print('input dims of precip: ', precip.dims, flush = True)
 
-
-
 ### monthly input
 # variable names tiwp, tb_iris, precip 
-assert precip.shape == tb_iris.data.shape
-assert tiwp.shape == precip.shape
+print(precip.shape, tb_iris.shape, tiwp.shape, flush = True)
 
-monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_imerg.nc')
+monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_GPMIMERG.nc')
 print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
@@ -240,8 +252,8 @@ if monthly_file.is_file() is False:
     print(mask_xr.dtype, mask_xr, flush = True)
 
     # Save output data (mask and track files)
-    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_imerg.nc'))    
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_imerg.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_GPMIMERG.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_GPMIMERG.nc'))
     print('files saved', str(datetime.now()), flush = True)
 
 else:

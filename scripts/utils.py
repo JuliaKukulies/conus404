@@ -510,15 +510,15 @@ def get_stats_conus(features, segments, ds, timedim = 0, inplace=False):
     features["total_lwp"] = np.nan 
     features["min_tb"] = np.nan
     # distributions
-    features['iwp_hist'] = np.nan
-    features['precip_hist'] = np.nan
-    features['condensation_hist'] = np.nan
+    #features['iwp_hist'] = np.nan
+    #features['precip_hist'] = np.nan
+    #features['condensation_hist'] = np.nan
     
     # IWP tendency  
     features["total_iwpten"] = np.nan
     # get positive IWP tendency from CCIC dataset 
     tiwp_ten = get_iwp_tendency(ds.tiwp)
-    tiwp_ten["time"] = segments.time.values[1:]
+    tiwp_ten["time"] = ds.time.values[1:]
     
     # POSITIVE ICE WATER PATH TENDENCY
 
@@ -533,16 +533,15 @@ def get_stats_conus(features, segments, ds, timedim = 0, inplace=False):
     rain_rate_bins = np.linspace(1,200,200)
     condensation_bins = np.linspace(1, 200,200)
     iwp_bins = np.linspace(1,100,200)
-    #iwp_bins = np.array([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10])
-
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-        features, segments, ds.surface_precip, statistic = dict(precip_hist= (np.histogram, {'bins': rain_rate_bins})), default = np.nan)
+  
+    #features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    #    features, segments, ds.surface_precip, statistic = dict(precip_hist= (np.histogram, {'bins': rain_rate_bins})), default = np.nan)
     
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-        features, segments, ds.tiwp, statistic = dict(iwp_hist= (np.histogram, {'bins': iwp_bins})), default = np.nan)
+    #features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+     #   features, segments, ds.tiwp, statistic = dict(iwp_hist= (np.histogram, {'bins': iwp_bins})), default = np.nan)
     
-    features = tobac.utils.bulk_statistics.get_statistics_from_mask(
-    features, segments, ds.condensation_rate*3600, statistic = dict(condensation_hist=(np.histogram, {'bins': condensation_bins})), default = np.nan)
+    #features = tobac.utils.bulk_statistics.get_statistics_from_mask(
+    #features, segments, ds.condensation_rate*3600, statistic = dict(condensation_hist=(np.histogram, {'bins': condensation_bins})), default = np.nan)
 
     #### get statistics for each detected feature ####
 
