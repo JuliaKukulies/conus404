@@ -94,7 +94,7 @@ tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
 # interpolate nan values (crucial for tracking on native grid,                                     
 # because otherwise way less features are identified in the obs data compared to model)           
 tb_cropped= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
-tb_cropped['lat'] =tb_cropped.lat
+tb_cropped['lat'] = -tb_cropped.lat
 
 print('processing Tb data...', str(datetime.now()) , flush = True )
 # regrid merg DATA 

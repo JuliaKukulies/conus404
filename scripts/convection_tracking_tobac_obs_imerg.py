@@ -89,9 +89,7 @@ tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
 # interpolate nan values (crucial for tracking on native grid,
 # because otherwise way less features are identified in the obs data compared to model) 
 tbb_filled= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
-tbb_filled['lat'] = tbb_filled
-
-print(tbb_filled.lat.values, tbb_filled.lon.values, flush = True)
+tbb_filled['lat'] = -tbb_filled.lat
     
 # convert tracking fields to iris 
 tb_iris = tbb_filled.to_iris()
