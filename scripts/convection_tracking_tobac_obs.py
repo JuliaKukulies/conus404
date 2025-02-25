@@ -78,6 +78,7 @@ precip['lon'] = ds_coords.lon
 
 # get monthly file for Tb (crop, regrid, and set nan)
 monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
+monthly_file_ir.sort()
 ds = xr.open_mfdataset(monthly_file_ir)
 
 # latitudes are flipped in IR data, so fix that                                                    

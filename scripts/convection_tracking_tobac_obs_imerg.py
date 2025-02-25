@@ -6,6 +6,9 @@ The script also calculates bulk statistics (incl. total precipitation, condensat
 Contact: kukulies@ucar.edu
 
 """
+import io
+import contextlib 
+import calendar
 import sys
 from scipy.interpolate import griddata 
 from datetime import datetime
@@ -64,10 +67,12 @@ parameters_merge = dict(
 ################################ processing monthly files ######################################
 month =  str(sys.argv[2]).zfill(2)
 
-# get monthly file for Tb (crop, regrid, and set nan)
+# get monthly file for Tb (crop, regrid, and interpolate nan)
 monthly_file_ir = list((mergir/ year ).glob(str('merg_'+year + month +'*_4km-pixel.nc4') )) 
+monthly_file_ir.sort()
 print(len(monthly_file_ir), ' files for MERGIR.', flush = True) 
 ds = xr.open_mfdataset(monthly_file_ir)
+print(ds.dims, flush = True )
 # latitudes are flipped in IR data, so fix that 
 tbb  = np.flip(ds.Tb, axis =1 )
 tbb['lat'] = np.flip(tbb.lat, axis = 0)
@@ -90,7 +95,7 @@ tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
 # because otherwise way less features are identified in the obs data compared to model) 
 tbb_filled= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
 tbb_filled['lat'] = -tbb_filled.lat
-    
+
 # convert tracking fields to iris 
 tb_iris = tbb_filled.to_iris()
 
@@ -165,7 +170,8 @@ regridded_gpm = regridded_xarray.transpose('lat', 'lon', 'time')
 # resample to hourly data, this data contains the hourly average rain rate of GPM over CONUS
 # CCIC grid (same that is used for TC tracking)
 precip = regridded_gpm.resample(time = '1h').mean()
-
+precip = np.flip(precip, axis = 0 )
+precip['lat'] = np.flip(precip.lat, axis = 0 ) 
 print('GPM IMERG precip pre-processing done,data ready to be used in tracking', flush = True)
 print('input dims of precip: ', precip.dims, flush = True)
 
@@ -183,7 +189,8 @@ if monthly_file.is_file() is False:
 
     # linking  
     print(f"Commencing tracking", flush=True)
-    tracks = tobac.linking_trackpy(features, tb_iris, dt, dxy, **parameters_linking)
+    with contextlib.redirect_stdout(io.StringIO()):
+        tracks = tobac.linking_trackpy(features, tb_iris, dt, dxy, **parameters_linking)
     # reduce tracks to valid cells and those cells that contain a cold core
     tracks = tracks[tracks.cell != -1]
     tracks_cold_core = tracks.groupby("cell").feature_min_tb.min()
@@ -200,7 +207,7 @@ if monthly_file.is_file() is False:
 
     # Tb segmentation 
     print(f"Commencing segmentation", flush=True)
-    mask, tracks = tobac.segmentation_2D(tracks, tb_iris, dxy, **parameters_segmentation)
+    mask, tracks = tobac.segmentation.segmentation(tracks, tb_iris, dxy, **parameters_segmentation)
 
     # Bulk statistics for identified cloud objects
     print('Calculating the statistics...', flush = True)
@@ -216,7 +223,8 @@ if monthly_file.is_file() is False:
     # check if time coordinates match
     assert (mask_xr.time.values == tiwp.time.values).all()
     assert (precip.time.values == tiwp.time.values).all()
-    #print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True) 
+    #print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True)
+    print(tbb_filled.lat[0:10], mask_xr.lat[0:10], precip.lat[0:10], flush = True)
     tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
     lonname = "longitude"
     latname= "latitude"
