@@ -77,6 +77,11 @@ for monthly_file in monthly_files:
         tb_iris = ds.tb.to_iris()
         precip_iris = ds.surface_precip.to_iris()
 
+        # read in StageIV and bring to CONUS grid                                                            
+        # set input data to NaN, where StageIV is NaN
+        
+        ############################# Tracking #################################
+
         # feature detection based on Tb
         print(f"Commencing feature detection using Tb for ", year, month, flush=True)
         features=tobac.feature_detection_multithreshold(tb_iris ,dxy, **parameters_features)

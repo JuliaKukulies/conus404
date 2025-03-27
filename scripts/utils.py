@@ -12,8 +12,6 @@ import pandas as pd
 import tobac
 from tobac.utils.periodic_boundaries import weighted_circmean
 
-
-
 def get_tb(olr):
     """                                                                                                       
     This function converts outgoing longwave radiation to brightness temperatures.                             
@@ -33,6 +31,100 @@ def get_tb(olr):
     Tf = (abs(olr)/sig) ** (1./4)
     tb = (((aa ** 2 + 4 * bb *Tf ) ** (1./2)) - aa)/(2*bb)
     return tb 
+
+
+
+def filter_troughs(etc): 
+    '''
+    
+    Remove mid-level cyclones that touch the northern domain boundary (to avoid tracking troughs). 
+
+    '''
+    filtered_etc = etc.copy()
+    for tt in np.arange(etc.time.size):
+        labeled = filtered_etc[tt]
+        northern_labels = np.unique(labeled[0, :])
+        northern_labels = northern_labels[northern_labels > 0 ] 
+        filtered_etc[tt] = filtered_etc[tt].where(~filtered_etc[tt].isin(northern_labels), 0 ).compute()
+    return filtered_etc
+
+
+def filter_tracked_objects_with_angle(
+    da, 
+    min_size, 
+    min_length, 
+    axis='lon',
+    max_angle=30,  # Maximum allowed deviation in degrees
+    background=0
+):
+    """
+    Remove objects failing size, length, OR directional criteria.
+    
+    Parameters:
+        max_angle (float): Angular tolerance in degrees (e.g., ±30°).
+    """
+
+    from skimage.measure import regionprops_table
+    
+    labeled_data = np.nan_to_num(da.values, nan=background).astype(np.int32)
+    unique_labels = np.unique(labeled_data)
+    unique_labels = unique_labels[unique_labels != background]
+    
+    obj_props = {
+        label: {'max_size': 0, 'max_length': 0, 'valid_angle': False}
+        for label in unique_labels
+    }
+    
+    axis_index = {'lat': 0, 'lon': 1}[axis]
+    
+    for t in range(labeled_data.shape[0]):
+        frame = labeled_data[t]
+        # Get properties for all regions in current frame
+        props = regionprops_table(
+            frame, 
+            properties=('label', 'area', 'bbox', 'orientation')
+        )
+        
+        # Convert to more accessible format
+        for i in range(len(props['label'])):
+            label = props['label'][i]
+            # Bounding box format: (min_row, min_col, max_row, max_col)
+            bbox = props['bbox-0'][i], props['bbox-1'][i], props['bbox-2'][i], props['bbox-3'][i]
+            
+            # Calculate length along specified axis
+            if axis == 'lon':
+                current_length = bbox[3] - bbox[1]  # max_col - min_col
+            else:  # lat
+                current_length = bbox[2] - bbox[0]  # max_row - min_row
+            
+            angle_deg = np.abs(np.rad2deg(props['orientation'][i]))
+            
+            # Update lifetime maxima
+            obj_props[label]['max_size'] = max(
+                obj_props[label]['max_size'], 
+                props['area'][i]
+            )
+            obj_props[label]['max_length'] = max(
+                obj_props[label]['max_length'], 
+                current_length
+            )
+            # Check if angle is valid at least once
+            if angle_deg <= max_angle:
+                obj_props[label]['valid_angle'] = True
+    
+    # Keep objects meeting ALL criteria
+    valid_labels = [
+        label for label in unique_labels
+        if (obj_props[label]['max_size'] >= min_size) and
+           (obj_props[label]['max_length'] >= min_length) and
+           (obj_props[label]['valid_angle'])
+    ]
+    
+    mask = np.isin(labeled_data, valid_labels)
+    filtered_data = np.where(mask, labeled_data, background)
+    
+    return xr.DataArray(filtered_data, dims=da.dims, coords=da.coords)
+
 
 
 
@@ -94,9 +186,7 @@ def crop_gpm_to_conus(xarray_data, lons, lats):
     row_end = np.where(lats  < conus_lat_max)[0][-1]
     
     cropped_gpm = xarray_data[{'lat': slice(row_start, row_end), 'lon': slice(col_start, col_end)}]
-
     return cropped_gpm
-
 
 
 def regrid_to_conus(input, latname, lonname, ds = 'StageIV'): 
@@ -157,7 +247,6 @@ def get_bulk_PE(dataframe, group = 'track', lifetime = True):
         bulk_precip = dataframe.total_precip.sum()  / 3600 
         bulk_con = dataframe.total_con.sum()
         bulk_PE = bulk_precip / bulk_con
-
     else:
         bulk_precip = dataframe.groupby(group).total_precip.sum()  / 3600 
         bulk_con = dataframe.groupby(group).total_con.sum()

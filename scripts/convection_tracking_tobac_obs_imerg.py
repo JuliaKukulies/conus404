@@ -120,7 +120,7 @@ for fname in file_list_ccic:
         tiwp_xr = tiwp_data
     else:
         tiwp_xr = xr.concat([tiwp_xr, tiwp_data], dim = 'time')
-
+        
 tiwp_lats = tiwp_cropped.latitude
 tiwp_lons = tiwp_cropped.longitude
 tiwp = xr.DataArray(tiwp_xr.data,coords=[times, tiwp_lats.values,tiwp_lons.values],dims=['time', 'latitude', 'longitude'])
@@ -175,11 +175,27 @@ precip['lat'] = np.flip(precip.lat, axis = 0 )
 print('GPM IMERG precip pre-processing done,data ready to be used in tracking', flush = True)
 print('input dims of precip: ', precip.dims, flush = True)
 
-### monthly input
-# variable names tiwp, tb_iris, precip 
-print(precip.shape, tb_iris.shape, tiwp.shape, flush = True)
+# read in StageIV 
+stageIV= Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/data/')
+stageIV_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc')
+stageIV_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
+monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc')
+ds_prec = xr.open_dataset(monthly_file_prec)
+stage_precip = ds_prec.Precipitation
+stage_precip = precip.transpose("rlat", "rlon", "time")
+stage_precip['lat'] = stage_coords.lat
+stage_precip['lon'] = stage_coords.lon
 
-monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_GPMIMERG.nc')
+# regrid to Tb/CCIC grid 
+
+# use this data to set Tb and Precip NaN, where StageIV is NaN
+
+
+####################################### Tracking ##############################################
+
+### monthly input:  tiwp, tb_iris, precip 
+print(precip.shape, tb_iris.shape, tiwp.shape, flush = True)
+monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG.nc')
 print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
@@ -225,7 +241,7 @@ if monthly_file.is_file() is False:
     assert (precip.time.values == tiwp.time.values).all()
     #print(tracks.time.values[0:10] , mask_xr.time.values[0:10], tracks.time.dtype, mask_xr.time.dtype, flush = True)
     print(tbb_filled.lat[0:10], mask_xr.lat[0:10], precip.lat[0:10], flush = True)
-    tracks = utils.get_statistics_obs(tracks, mask_xr, precip, tiwp, inplace = True)
+    tracks = utils.get_statistics_obs(tracks, mask_xr, precip, np.flip(tiwp, axis = 0), inplace = True)
     lonname = "longitude"
     latname= "latitude"
 
@@ -258,8 +274,8 @@ if monthly_file.is_file() is False:
     print(mask_xr.dtype, mask_xr, flush = True)
 
     # Save output data (mask and track files)
-    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_GPMIMERG.nc'))    
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_GPMIMERG.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_IMERG.nc'))
     print('files saved', str(datetime.now()), flush = True)
 
 else:

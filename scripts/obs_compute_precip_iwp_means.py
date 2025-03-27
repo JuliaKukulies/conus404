@@ -1,5 +1,5 @@
 """
-This script derives histograms and monthly mean maps for CCIC, Stage IV and GPM IMERG, regridded to the 4km CONUS404 grid. 
+This script derives histograms and monthly mean maps for CCIC, Stage IV and GPM IMERG, regridded to the 4km CONUS404 grid.
 
 """
 

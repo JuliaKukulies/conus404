@@ -65,7 +65,7 @@ stage_iv_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_
 ds_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
 
 ################################ processing monthly files ######################################
-month =  str(sys.argv[2])
+month =  str(sys.argv[2]).zfill(2)
 
 # get monthly file for Stage IV
 monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc') 
