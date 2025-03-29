@@ -96,8 +96,6 @@ tbb_cropped = tbb_cropped.transpose('lat', 'lon', 'time')
 tbb_filled= np.flip(tbb_cropped.interpolate_na(dim = 'lat'), axis = 0 )
 tbb_filled['lat'] = -tbb_filled.lat
 
-# convert tracking fields to iris 
-tb_iris = tbb_filled.to_iris()
 
 # get monthly file for CCIC (crop, regrid, and set nan)
 import ccic
@@ -135,14 +133,13 @@ print(len(gpm_file_list), ' files for GPM for month', str(month), str(year),  fl
 
 # get all 30-min files together and process (from TC script) 
 datasets = []
-gpm_times = np.array(())
 
 for i, fname in enumerate(gpm_file_list):
     with h5py.File(fname, 'r') as f:
         if i == 0:
             lat_coords = f['Grid/lat'][:]
             lon_coords = f['Grid/lon'][:]
-        gpm_times = np.append(gpm_times, np.array(f['Grid/time'][:]))
+        #gpm_times = np.append(gpm_times, np.array(f['Grid/time'][:]))
         data = f['Grid/precipitation'][:]
         coords = {'lat': lat_coords,  'lon': lon_coords}  
         xarray_data = xr.DataArray(np.array(data).squeeze(), coords=coords, dims=['lon', 'lat'])
@@ -178,24 +175,53 @@ print('input dims of precip: ', precip.dims, flush = True)
 # read in StageIV 
 stageIV= Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/data/')
 stageIV_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc')
-stageIV_coords = xr.open_dataset(stage_iv_conus, decode_times = False)
+stage_coords = xr.open_dataset(stageIV_conus, decode_times = False)
 monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc')
 ds_prec = xr.open_dataset(monthly_file_prec)
 stage_precip = ds_prec.Precipitation
-stage_precip = precip.transpose("rlat", "rlon", "time")
+stage_precip = stage_precip.transpose("rlat", "rlon", "time")
 stage_precip['lat'] = stage_coords.lat
 stage_precip['lon'] = stage_coords.lon
 
 # regrid to Tb/CCIC grid 
+datasets = []
+stage_times = []
 
+print('reading in StageIV data and regridded it to IMERGIR grid', flush = True)
+for time_idx in np.arange(stage.time.values.size): 
+    precip_t = stage_precip[:,:,time_idx]
+    tt = stage.time.values[time_idx]
+    stage_times.append(tt )
+    
+    # regrid to CCIC grid                                                                       
+    lat_grid, lon_grid = stage_precip.lat.values, stage_precip.lon.values
+    target_lons = tiwp_lons
+    target_lats = tiwp_lats
+    target_lat_grid, target_lon_grid = np.meshgrid(target_lats, target_lons)
+
+    points = np.vstack((lon_grid.flatten(), lat_grid.flatten())).T
+    target_points = np.vstack((target_lon_grid.flatten(), target_lat_grid.flatten())).T
+
+    flattened_data = precip_t.values.flatten()
+    interpolated = griddata(points, flattened_data, (target_lon_grid, target_lat_grid), method='nearest')
+    datasets.append(interpolated)
+
+regridded_data = np.stack(datasets, axis=0)                                         
+regridded_xarray = xr.DataArray(regridded_data,coords=[stage_times, target_lons, target_lats],dims=['time', 'lon', 'lat'])
+regridded_stage = regridded_xarray.transpose('lat', 'lon', 'time')
+
+print('setting datasets to NaN where there is no StageIV coverage', flush = True)
 # use this data to set Tb and Precip NaN, where StageIV is NaN
-
+precip = precip.where(~np.isnan(regridded_stage.data), np.nan)
+tbb_filled = tbb_filled.where(~np.isnan(regridded_stage.data), np.nan) 
+# convert tracking fields to iris               
+tb_iris = tbb_filled.to_iris()
 
 ####################################### Tracking ##############################################
 
 ### monthly input:  tiwp, tb_iris, precip 
 print(precip.shape, tb_iris.shape, tiwp.shape, flush = True)
-monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG.nc')
+monthly_file = savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG_StageIV-extent.nc')
 print('start tracking for ', year, month, str(datetime.now()), flush = True)
 
 if monthly_file.is_file() is False:
@@ -274,14 +300,11 @@ if monthly_file.is_file() is False:
     print(mask_xr.dtype, mask_xr, flush = True)
 
     # Save output data (mask and track files)
-    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG.nc'))    
-    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_IMERG.nc'))
+    tracks.to_xarray().to_netcdf(savedir / str('tobac_storm_tracks_' + year + '_' + month + '_IMERG_StageIV-extent.nc'))    
+    mask_xr.to_netcdf(savedir / str('tobac_storm_mask_' + year + '_' + month + '_IMERG_StageIV-extent.nc'))
     print('files saved', str(datetime.now()), flush = True)
-
 else:
-    print(str(monthly_file), ' does already exist.', flush = True)
-   
-
+    print(str(monthly_file), ' does already exist.', flush = True) 
 
 
     

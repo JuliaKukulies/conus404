@@ -59,7 +59,7 @@ parameters_segmentation['statistic'] = {"object_min_tb": np.nanmin, 'object_max_
 
 parameters_merge = dict(
     distance=dxy*20,)
-################################ processing monthly files ######################################
+################################ processing monthly files ##################################
 
 for monthly_file in monthly_files:
     month =  str(monthly_file)[-5:-3]
@@ -73,12 +73,60 @@ for monthly_file in monthly_files:
         ds = ds.drop_vars(["lats", "lons"])
         lonname = 'lon'
         latname =  'lat'
-        # convert tracking fields to iris cubes 
-        tb_iris = ds.tb.to_iris()
-        precip_iris = ds.surface_precip.to_iris()
+        conus_lats, conus_lons = ds.lat, ds.lon
 
-        # read in StageIV and bring to CONUS grid                                                            
-        # set input data to NaN, where StageIV is NaN
+        # read in StageIV 
+        stageIV= Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/data/')
+        stageIV_conus = Path('/glade/campaign/mmm/c3we/prein/observations/STAGE_II_and_IV/DEM_STAGE-IV/STAGE4_A.nc')
+        stage_coords = xr.open_dataset(stageIV_conus, decode_times = False)
+        monthly_file_prec = stageIV / str('LEVEL_2-4_hourly_precipitation_' + year + month +'.nc')
+        ds_prec = xr.open_dataset(monthly_file_prec)
+        stage_precip = ds_prec.Precipitation
+        stage_precip = stage_precip.transpose("rlat", "rlon", "time")
+        stage_precip['lat'] = stage_coords.lat
+        stage_precip['lon'] = stage_coords.lon
+
+        # regrid to CONUS grid 
+        datasets = []
+        stage_times = []
+
+        print('reading in StageIV data and regridded it to IMERGIR grid', flush = True)
+        for time_idx in np.arange(stage.time.values.size): 
+            precip_t = stage_precip[:,:,time_idx]
+            tt = stage.time.values[time_idx]
+            stage_times.append(tt )
+
+            # regrid to CONUS                                                                      
+            lat_grid, lon_grid = stage_precip.lat.values, stage_precip.lon.values
+            target_lat_grid, target_lon_grid = conus_lats.values, conus_lons.values
+
+            points = np.vstack((lon_grid.flatten(), lat_grid.flatten())).T
+            target_points = np.vstack((target_lon_grid.flatten(), target_lat_grid.flatten())).T
+
+            flattened_data = precip_t.values.flatten()
+            interpolated = griddata(points, flattened_data, (target_lon_grid, target_lat_grid), method='nearest')
+            datasets.append(interpolated)
+
+        regridded_data = np.stack(datasets, axis=0)                                         
+        regridded_xarray = xr.DataArray(
+            regridded_data,
+            coords={
+                'time': stage_times,  # 1D time coordinate
+                'lon': (('lat', 'lon'), conus_lons.values),  # 2D lon coordinate with dims
+                'lat': (('lat', 'lon'), conus_lats.values),  # 2D lat coordinate with dims
+            },
+            dims=['time', 'lat', 'lon']  # Order matches regridded_data's shape
+        )
+        regridded_stage = regridded_xarray.transpose('lat', 'lon', 'time')  
+            
+        print('setting datasets to NaN where there is no StageIV coverage', flush = True)
+        # use this data to set Tb and Precip NaN, where StageIV is NaN
+        precip = ds.surface_precip.where(~np.isnan(regridded_stage.data), np.nan)
+        tbb = ds.tb.where(~np.isnan(regridded_stage.data), np.nan) 
+        
+        # convert tracking fields to iris cubes 
+        tb_iris = precip.to_iris()
+        precip_iris = tbb.to_iris()
         
         ############################# Tracking #################################
 
